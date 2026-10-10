@@ -7,10 +7,6 @@
     {
       "source": "/",
       "destination": "/smart eco station.html"
-    },
-    {
-      "source": "/authority",
-      "destination": "/authority/authority.html"
     }
   ]
 }
