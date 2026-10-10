@@ -1,6 +1,16 @@
 {
+  "framework": null,
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": ".",
   "rewrites": [
-    { "source": "/", "destination": "/smart eco station.html" },
-    { "source": "/authority", "destination": "/authority/authority.html" }
+    {
+      "source": "/",
+      "destination": "/smart eco station.html"
+    },
+    {
+      "source": "/authority",
+      "destination": "/authority/authority.html"
+    }
   ]
 }
