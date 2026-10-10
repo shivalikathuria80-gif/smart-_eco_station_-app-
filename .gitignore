@@ -1,0 +1,9 @@
+node_modules/
+__pycache__/
+*.pyc
+# local backups made while editing
+smart eco station.backup.html
+smart eco station.pre-*.html
+# personal screenshots, not part of the app
+WhatsApp Image *.jpeg
+.claude/

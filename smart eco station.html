@@ -1,0 +1,1309 @@
+                                                                          <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart AI Eco-Station Portal</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+  <!-- FontAwesome & Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* --- NAVIGATION BAR --- */
+    nav {
+      background-color: #1e293b;
+      border-bottom: 1px solid #334155;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .logo { font-size: 1.4rem; font-weight: 700; color: #10b981; display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; margin-right: 1rem; }
+    .nav-links { display: flex; gap: 1rem; list-style: none; }
+    .nav-links button {
+      background: none; border: none; color: #94a3b8; font-size: 0.95rem; font-weight: 600;
+      padding: 0.5rem 1rem; cursor: pointer; border-radius: 0.5rem; transition: all 0.2s; white-space: nowrap;
+    }
+    .nav-links button:hover, .nav-links button.active { color: #f8fafc; background-color: #334155; }
+
+    /* --- PAGE CONTAINERS --- */
+    main { flex: 1; padding: 2rem 1rem; max-width: 1100px; width: 100%; margin: 0 auto; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* --- CARDS & GRID --- */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
+    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 1rem; padding: 1.5rem; }
+
+    /* --- DASHBOARD PAGE --- */
+    .status-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: #0f172a; padding: 0.4rem 0.8rem; border-radius: 20px; font-size: 0.8rem; border: 1px solid #334155; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; }
+    .status-dot.offline { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .pts { font-size: 2.2rem; font-weight: 700; color: #38bdf8; margin: 0.5rem 0; }
+
+    /* --- LEADERBOARD PAGE --- */
+    .leaderboard-table { width: 100%; border-collapse: collapse; margin-top: 1rem; background: #1e293b; border-radius: 1rem; overflow: hidden; border: 1px solid #334155; }
+    .leaderboard-table th, .leaderboard-table td { padding: 1rem; text-align: left; border-bottom: 1px solid #334155; }
+    .leaderboard-table th { background-color: #0f172a; color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; }
+    .rank-1 { color: #f59e0b; font-weight: bold; font-size: 1.2rem; }
+    .rank-2 { color: #94a3b8; font-weight: bold; font-size: 1.1rem; }
+    .rank-3 { color: #b45309; font-weight: bold; font-size: 1.1rem; }
+
+    /* --- POINTS CHECKER PANEL (sits directly below the leaderboard) --- */
+    .checker-card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      margin-top: 2rem;
+      border-top: 4px solid #38bdf8;
+    }
+    .checker-input-group {
+      display: flex;
+      gap: 0.8rem;
+      margin-top: 1rem;
+      flex-wrap: wrap;
+    }
+    .checker-input-group input {
+      flex: 1;
+      min-width: 240px;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #f8fafc;
+      font-size: 0.95rem;
+    }
+    .checker-input-group input:focus {
+      outline: none;
+      border-color: #38bdf8;
+    }
+    .checker-btn {
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .checker-btn:hover { background: #7dd3fc; }
+    .checker-result {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      display: none;
+      background: #0f172a;
+      border: 1px solid #334155;
+    }
+    .checker-result.success { border-color: #10b981; }
+    .checker-result.error { border-color: #ef4444; color: #f87171; }
+
+    /* --- REWARDS --- */
+    .btn-claim { background: #10b981; color: #0f172a; border: none; padding: 0.6rem 1rem; border-radius: 0.5rem; font-weight: 700; cursor: pointer; width: 100%; margin-top: 1rem; }
+    .btn-claim:hover { background: #34d399; }
+
+    /* --- ABOUT PAGE (same language as sign-in / dashboard) --- */
+    .section-title { font-size: 1.35rem; font-weight: 600; color: #f8fafc; margin-top: 3rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.6rem; letter-spacing: -0.01em; }
+    .section-title i { color: #10b981; }
+
+    .about-hero { margin-top: 1.5rem; padding: 1.25rem; }
+    .flow-svg { display: block; width: 100%; height: auto; }
+    .flow-svg text { font-family: 'Inter', sans-serif; }
+    .flow-svg .lbl { fill: #94a3b8; font-size: 13px; font-weight: 500; }
+    .flow-svg .node { fill: rgba(30,41,59,0.75); stroke: #334155; stroke-width: 1.5; transition: stroke .4s; }
+    .flow-svg .wire { fill: none; stroke: #334155; stroke-width: 2; stroke-dasharray: 6 6; }
+    .flow-svg .wire.live { stroke: #10b981; animation: dash 1s linear infinite; }
+    @keyframes dash { to { stroke-dashoffset: -12; } }
+    .flow-svg [data-step].on .node { stroke: #10b981; }
+    .flow-svg .rfid-card { transition: transform .6s cubic-bezier(.2,.7,.2,1); }
+    .flow-svg .door { transition: transform .5s cubic-bezier(.2,.7,.2,1); transform-box: fill-box; transform-origin: left center; }
+    .flow-svg .flash { opacity: 0; transition: opacity .2s; }
+    .flow-svg .verdict { opacity: 0; transition: opacity .3s; font-size: 13px; font-weight: 700; }
+    .flow-svg .flap { transition: transform .5s cubic-bezier(.2,.7,.2,1); transform-box: fill-box; transform-origin: center top; }
+    .flow-svg .item { transition: transform .9s cubic-bezier(.45,.05,.25,1), opacity .3s; }
+    .flow-svg .cloud-pulse { opacity: 0; transform-box: fill-box; transform-origin: center; }
+    .flow-svg .pts-pop { opacity: 0; font-size: 15px; font-weight: 800; fill: #34d399; }
+    .flow-svg.p1 .rfid-card { transform: translateX(34px); }
+    .flow-svg.p2 .door, .flow-svg.p3 .door { transform: rotate(-70deg); }
+    .flow-svg.p3 .flash { opacity: 1; }
+    .flow-svg.p3 .verdict, .flow-svg.p4 .verdict { opacity: 1; }
+    .flow-svg.p5 .cloud-pulse { animation: pulse 1s ease-out; }
+    .flow-svg.p5 .pts-pop { animation: pop 1.3s ease-out forwards; }
+    @keyframes pulse { 0% { opacity: .8; transform: scale(1); } 100% { opacity: 0; transform: scale(1.6); } }
+    @keyframes pop { 0% { opacity: 0; transform: translateY(8px); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px); } }
+
+    .flow-controls { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-top: 0.75rem; }
+    .flow-caption { color: #cbd5e1; font-size: 0.95rem; min-height: 1.5em; }
+    .flow-caption strong { color: #10b981; }
+    .flow-btn { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; padding: 0 1rem; border-radius: 1rem; border: 1px solid #334155; background: rgba(15,23,42,0.6); color: #f8fafc; cursor: pointer; font-weight: 500; }
+    .flow-btn:hover { background: #1e293b; }
+
+    .metrics-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .metric-card { background: rgba(30,41,59,0.55); backdrop-filter: blur(14px); border: 1px solid rgba(248,250,252,0.1); border-radius: 1.25rem; padding: 1.1rem 1.2rem; }
+    .metric-card h3 { font-size: 1.9rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .metric-card p { font-size: 0.72rem; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 0.2rem; }
+
+    .workflow-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 0.9rem; margin-top: 1rem; }
+    .step-card { position: relative; text-align: left; font: inherit; color: inherit; cursor: pointer; background: rgba(30,41,59,0.6); border: 1px solid #334155; padding: 1.15rem; border-radius: 1.25rem; overflow: hidden; transition: border-color .3s, background-color .3s, transform .2s; }
+    .step-card:hover { transform: translateY(-2px); }
+    .step-card.active { border-color: rgba(16,185,129,0.7); background: rgba(16,185,129,0.08); }
+    .step-card::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: #10b981; transform: scaleX(0); transform-origin: left; }
+    .step-card.active.running::after { animation: stepbar var(--step-ms, 2200ms) linear forwards; }
+    @keyframes stepbar { to { transform: scaleX(1); } }
+    .step-num { width: 36px; height: 36px; border-radius: 0.8rem; display: grid; place-items: center; font-weight: 700; font-size: 0.9rem; color: #10b981; background: rgba(16,185,129,0.12); margin-bottom: 0.8rem; font-variant-numeric: tabular-nums; }
+    .step-card.active .step-num { background: #10b981; color: #0f172a; }
+    .step-card h4 { font-size: 1rem; color: #f1f5f9; margin-bottom: 0.4rem; }
+    .step-card p { font-size: 0.85rem; color: #94a3b8; line-height: 1.5; }
+
+    .about-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+    .module-card { background: rgba(30,41,59,0.6); border: 1px solid #334155; border-radius: 1.25rem; padding: 1.4rem; transition: border-color .2s, transform .2s; min-width: 0; }
+    .module-card:hover { border-color: rgba(16,185,129,0.6); transform: translateY(-2px); }
+    .module-icon { width: 44px; height: 44px; border-radius: 0.9rem; display: grid; place-items: center; font-size: 1.1rem; margin-bottom: 0.9rem; }
+    .module-card h3 { font-size: 1.05rem; }
+    .module-card > p { color: #94a3b8; font-size: 0.9rem; margin-top: 0.5rem; line-height: 1.6; }
+    .module-card ul { color: #cbd5e1; font-size: 0.86rem; margin: 0.6rem 0 0 1.1rem; line-height: 1.65; }
+    .tech-pill-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .tech-pill { background: rgba(15,23,42,0.6); border: 1px solid #334155; padding: 0.3rem 0.8rem; border-radius: 999px; font-size: 0.78rem; color: #6ee7b7; }
+
+    .sr { opacity: 0; transform: translateY(16px); transition: opacity .6s cubic-bezier(.2,.7,.2,1), transform .6s cubic-bezier(.2,.7,.2,1); }
+    .sr.in { opacity: 1; transform: none; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sr { opacity: 1; transform: none; transition: none; }
+      .flow-svg *, .step-card, .step-card::after, .module-card { transition: none !important; animation: none !important; }
+    }
+
+    /* --- STATION SUMMARY STRIP (dashboard) --- */
+    .stats-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-top: 1.2rem; }
+    .stat { background: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; padding: 1rem 1.2rem; }
+    .stat .label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+    .stat .value { font-size: 1.6rem; font-weight: 800; margin-top: 0.2rem; font-variant-numeric: tabular-nums; }
+    .stat .value small { font-size: 0.8rem; color: #94a3b8; font-weight: 600; }
+    .field-hint { font-size: 0.72rem; color: #64748b; margin-top: 0.3rem; }
+    .bin-updated { font-size: 0.72rem; color: #64748b; margin-top: 0.6rem; }
+    .db-error { color: #fbbf24; font-size: 0.85rem; }
+
+    footer { text-align: center; padding: 2rem; color: #64748b; font-size: 0.85rem; border-top: 1px solid #1e293b; margin-top: 3rem; }
+
+    /* --- AUTH PAGE (split layout: form left, live-impact panel right) --- */
+    .auth-shell { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; min-height: min(78dvh, 720px); }
+    .auth-form-col { display: flex; align-items: center; justify-content: center; padding: 1.5rem 0.5rem; }
+    .auth-form-inner { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 1.4rem; }
+    .auth-title { font-size: clamp(2.2rem, 5vw, 3rem); font-weight: 300; letter-spacing: -0.04em; line-height: 1.05; text-wrap: balance; }
+    .auth-title strong { font-weight: 700; color: #10b981; }
+    .auth-sub { color: #94a3b8; line-height: 1.6; }
+    #authForm { display: flex; flex-direction: column; gap: 1.1rem; }
+    .auth-field label { display: block; font-size: 0.85rem; font-weight: 500; color: #94a3b8; margin-bottom: 0.45rem; }
+    .glass { position: relative; border: 1px solid #334155; border-radius: 1rem; background: rgba(248,250,252,0.04); backdrop-filter: blur(6px); transition: border-color .2s, background-color .2s; }
+    .glass:focus-within { border-color: rgba(16,185,129,0.7); background: rgba(16,185,129,0.08); }
+    .glass input { width: 100%; background: transparent; border: none; color: #f8fafc; font-size: 1rem; padding: 0.95rem 1rem; border-radius: 1rem; }
+    .glass input:focus { outline: none; }
+    .glass input.has-toggle { padding-right: 3.2rem; }
+    .pw-toggle { position: absolute; top: 50%; right: 0.35rem; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; background: none; border: none; color: #94a3b8; cursor: pointer; border-radius: 0.75rem; }
+    .pw-toggle:hover { color: #f8fafc; }
+    .auth-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; font-size: 0.9rem; }
+    .remember { display: inline-flex; align-items: center; gap: 0.6rem; cursor: pointer; color: #cbd5e1; min-height: 44px; }
+    .remember input { width: 18px; height: 18px; accent-color: #10b981; cursor: pointer; }
+    .auth-link { background: none; border: none; color: #34d399; font-size: 0.9rem; font-weight: 500; cursor: pointer; padding: 0.4rem 0; min-height: 44px; }
+    .auth-link:hover { text-decoration: underline; }
+    .auth-btn { width: 100%; min-height: 52px; border: none; border-radius: 1rem; font-weight: 600; font-size: 1rem; cursor: pointer; background: #10b981; color: #0f172a; display: flex; align-items: center; justify-content: center; gap: 0.6rem; transition: background-color .2s, transform .1s; }
+    .auth-btn:hover { background: #34d399; }
+    .auth-btn:active { transform: scale(0.98); }
+    .auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-btn.secondary { background: transparent; color: #f8fafc; border: 1px solid #334155; }
+    .auth-btn.secondary:hover { background: #1e293b; }
+    .auth-btn .spin { display: none; width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; }
+    .auth-btn.busy .spin { display: inline-block; }
+    .auth-btn.busy i { display: none; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .auth-divider { display: flex; align-items: center; gap: 1rem; color: #64748b; font-size: 0.85rem; }
+    .auth-divider::before, .auth-divider::after { content: ""; flex: 1; border-top: 1px solid #334155; }
+    .auth-switch { text-align: center; color: #94a3b8; font-size: 0.9rem; }
+    .auth-msg { font-size: 0.88rem; padding: 0.8rem 1rem; border-radius: 0.75rem; display: none; }
+    .auth-msg.error { display: block; background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #fca5a5; }
+    .auth-msg.success { display: block; background: rgba(16,185,129,0.1); border: 1px solid #10b981; color: #6ee7b7; }
+    .auth-notice { background: rgba(245,158,11,0.1); border: 1px solid #f59e0b; color: #fcd34d; padding: 0.8rem; border-radius: 0.75rem; font-size: 0.85rem; }
+
+    .auth-hero { position: relative; border-radius: 1.5rem; overflow: hidden; min-height: 420px;
+      background:
+        linear-gradient(180deg, rgba(15,23,42,0.05) 30%, rgba(15,23,42,0.85) 100%),
+        url("https://images.unsplash.com/photo-1532996122724-e3c354a0b15b?auto=format&fit=crop&w=1200&q=70") center/cover,
+        radial-gradient(circle at 30% 20%, #065f46, #0f172a 70%); }
+    .auth-hero-stats { position: absolute; left: 1.25rem; right: 1.25rem; bottom: 1.25rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.8rem; }
+    .impact-card { background: rgba(30,41,59,0.55); backdrop-filter: blur(14px); border: 1px solid rgba(248,250,252,0.1); border-radius: 1.25rem; padding: 1rem 1.1rem; }
+    .impact-card .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #cbd5e1; }
+    .impact-card .v { font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .impact-card .v.small { font-size: 1.05rem; }
+
+    .auth-profile { max-width: 420px; margin: 2rem auto; text-align: center; }
+    .auth-avatar { width: 80px; height: 80px; border-radius: 1.5rem; background: #334155; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; font-size: 1.8rem; color: #10b981; overflow: hidden; }
+    .auth-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    .reveal { opacity: 0; filter: blur(4px); transform: translateY(10px); animation: fadeSlideIn .6s cubic-bezier(.2,.7,.2,1) forwards; }
+    .reveal.d1 { animation-delay: .05s } .reveal.d2 { animation-delay: .1s } .reveal.d3 { animation-delay: .15s }
+    .reveal.d4 { animation-delay: .2s }  .reveal.d5 { animation-delay: .25s } .reveal.d6 { animation-delay: .3s }
+    @keyframes fadeSlideIn { to { opacity: 1; filter: blur(0); transform: none; } }
+
+    /* --- REWARDS WHEEL (ring at rest, turns into a drum on scroll / drag / keys) --- */
+    .wheel-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 1.5rem; margin-top: 1.5rem; align-items: stretch; }
+    .wheel { position: relative; height: min(68dvh, 560px); min-height: 380px; border-radius: 1.5rem; overflow: hidden; user-select: none;
+      background: radial-gradient(circle at 50% 50%, #12233a, #0f172a 70%); border: 1px solid #1e293b; }
+    .wheel-stage { position: absolute; inset: 0; cursor: grab; touch-action: pan-x; outline: none; }
+    .wheel-stage:active { cursor: grabbing; }
+    .wheel-stage:focus-visible { box-shadow: inset 0 0 0 2px #10b981; }
+    .wheel-rig { position: absolute; top: 50%; left: 50%; transform-style: preserve-3d; }
+    .wheel-card { position: absolute; backface-visibility: hidden; }
+    .wheel-face { display: flex; flex-direction: column; justify-content: space-between; width: 100%; height: 100%; padding: 1.1rem 1.2rem; border-radius: 1rem; overflow: hidden;
+      border: 1px solid rgba(248,250,252,0.12); box-shadow: 0 18px 40px -18px rgba(0,0,0,0.6); color: #f8fafc; }
+    .wheel-face i { font-size: 2.2em; }
+    .wheel-face .wf-name { font-weight: 700; font-size: 1.05em; line-height: 1.2; }
+    .wheel-face .wf-pts { font-weight: 800; font-size: 1.4em; font-variant-numeric: tabular-nums; }
+    .wheel-label, .wheel-title { position: absolute; pointer-events: none; font-weight: 300; letter-spacing: -0.03em; }
+    .wheel-label { inset: 0; display: grid; place-items: center; text-align: center; color: #cbd5e1; }
+    .wheel-title { top: 50%; left: 6%; transform: translateY(-50%); opacity: 0; max-width: 28%; line-height: 1.1; }
+    .wheel-hint { position: absolute; bottom: 0.9rem; left: 50%; transform: translateX(-50%); color: #64748b; font-size: 0.8rem; white-space: nowrap; pointer-events: none; }
+    .wheel-side { display: flex; flex-direction: column; gap: 1rem; }
+    .wheel-index { list-style: none; display: flex; flex-direction: column; gap: 0.25rem; }
+    .wheel-index button { width: 100%; min-height: 44px; text-align: left; background: none; border: 1px solid transparent; border-radius: 0.75rem; padding: 0.5rem 0.8rem; color: #94a3b8; cursor: pointer; font-size: 0.95rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+    .wheel-index button:hover { color: #f8fafc; background: #1e293b; }
+    .wheel-index button[aria-current="true"] { color: #f8fafc; border-color: #334155; background: #1e293b; font-weight: 600; }
+    .wheel-index span:last-child { font-variant-numeric: tabular-nums; color: #64748b; }
+    .wheel-detail h3 { font-size: 1.15rem; }
+    .wheel-detail p { color: #94a3b8; font-size: 0.9rem; margin-top: 0.35rem; line-height: 1.5; }
+    .wheel-nav { display: flex; gap: 0.5rem; }
+    .wheel-nav button { flex: 1; min-height: 44px; background: #1e293b; border: 1px solid #334155; color: #f8fafc; border-radius: 0.75rem; cursor: pointer; }
+    .wheel-nav button:hover { background: #334155; }
+    .redeem-note { display: none; font-size: 0.85rem; color: #6ee7b7; background: rgba(16,185,129,0.1); border: 1px solid #10b98155; border-radius: 0.75rem; padding: 0.7rem 0.9rem; }
+    .redeem-note.show { display: block; }
+
+    @media (max-width: 860px) {
+      .auth-shell { grid-template-columns: 1fr; min-height: 0; }
+      .auth-hero { min-height: 260px; }
+      .wheel-wrap { grid-template-columns: 1fr; }
+      .wheel-title { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { animation: none; opacity: 1; filter: none; transform: none; }
+      .auth-btn, .glass { transition: none; }
+    }
+
+    /* --- DASHBOARD + LEADERBOARD (same language as the sign-in page) --- */
+    .page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+    .page-title { font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 300; letter-spacing: -0.04em; line-height: 1.05; text-wrap: balance; }
+    .page-title strong { font-weight: 700; color: #10b981; }
+    .page-sub { color: #94a3b8; margin-top: 0.5rem; line-height: 1.6; max-width: 60ch; }
+    .status-badge { background: rgba(248,250,252,0.04); backdrop-filter: blur(6px); border-radius: 999px; padding: 0.5rem 0.95rem; min-height: 36px; }
+
+    .hero-panel { position: relative; margin-top: 1.5rem; border-radius: 1.5rem; overflow: hidden; padding: 1.25rem; border: 1px solid #1e293b;
+      background: radial-gradient(circle at 15% 0%, rgba(16,185,129,0.28), transparent 55%), radial-gradient(circle at 100% 100%, rgba(56,189,248,0.16), transparent 50%), #0f172a; }
+    .hero-panel .stats-strip { margin-top: 0; }
+    .stat { background: rgba(30,41,59,0.55); backdrop-filter: blur(14px); border: 1px solid rgba(248,250,252,0.1); border-radius: 1.25rem; padding: 1rem 1.1rem; }
+    .stat .label { color: #cbd5e1; letter-spacing: 0.08em; font-size: 0.72rem; }
+    .stat .value { font-weight: 700; font-size: 1.6rem; }
+
+    .user-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+    .user-card { background: rgba(30,41,59,0.6); border: 1px solid #334155; border-radius: 1.25rem; padding: 1.2rem; display: flex; flex-direction: column; gap: 0.9rem; transition: border-color .2s, transform .2s; min-width: 0; }
+    .user-card:hover { border-color: rgba(16,185,129,0.6); transform: translateY(-2px); }
+    .uc-head { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+    .uc-avatar { flex: none; width: 44px; height: 44px; border-radius: 0.9rem; display: grid; place-items: center; font-weight: 700; color: #0f172a; background: linear-gradient(135deg, #34d399, #10b981); }
+    .uc-name { font-weight: 600; overflow-wrap: anywhere; }
+    .uc-uid { color: #64748b; font-size: 0.78rem; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+    .uc-rank { margin-left: auto; flex: none; font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.6rem; border-radius: 999px; background: #0f172a; border: 1px solid #334155; color: #cbd5e1; font-variant-numeric: tabular-nums; }
+    .uc-pts { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .uc-pts span { font-size: 0.85rem; color: #94a3b8; font-weight: 500; }
+    .uc-meta { display: flex; justify-content: space-between; gap: 0.5rem; font-size: 0.8rem; color: #94a3b8; flex-wrap: wrap; }
+    .uc-meta i { color: #10b981; }
+    .uc-bar { height: 6px; border-radius: 999px; background: #33415580; overflow: hidden; }
+    .uc-bar > div { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #10b981, #38bdf8); transition: width .6s cubic-bezier(.2,.7,.2,1); }
+    .empty-state { grid-column: 1 / -1; text-align: center; color: #64748b; padding: 2.5rem 1rem; border: 1px dashed #334155; border-radius: 1.25rem; }
+
+    .podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; align-items: end; }
+    .podium-card { position: relative; text-align: center; border-radius: 1.5rem; padding: 1.25rem 1rem; border: 1px solid rgba(248,250,252,0.1); background: rgba(30,41,59,0.6); backdrop-filter: blur(14px); min-width: 0; }
+    .podium-card.p1 { padding-block: 2rem; background: radial-gradient(circle at 50% 0%, rgba(245,158,11,0.25), transparent 70%), rgba(30,41,59,0.7); border-color: rgba(245,158,11,0.45); }
+    .podium-card.p2 { border-color: rgba(203,213,225,0.35); }
+    .podium-card.p3 { border-color: rgba(180,83,9,0.5); }
+    .podium-medal { width: 48px; height: 48px; margin: 0 auto 0.7rem; border-radius: 1rem; display: grid; place-items: center; font-size: 1.2rem; color: #0f172a; }
+    .p1 .podium-medal { background: #f59e0b; } .p2 .podium-medal { background: #cbd5e1; } .p3 .podium-medal { background: #d97706; }
+    .podium-name { font-weight: 600; overflow-wrap: anywhere; }
+    .podium-pts { font-size: 1.6rem; font-weight: 700; margin-top: 0.3rem; font-variant-numeric: tabular-nums; }
+    .podium-pts span { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
+    .podium-card.empty { color: #64748b; border-style: dashed; }
+
+    .table-shell { margin-top: 1.5rem; border-radius: 1.25rem; border: 1px solid #334155; overflow-x: auto; background: rgba(30,41,59,0.6); }
+    .leaderboard-table { margin-top: 0; border: none; border-radius: 0; background: transparent; }
+    .leaderboard-table th { background: transparent; letter-spacing: 0.08em; font-size: 0.72rem; color: #94a3b8; }
+    .leaderboard-table tbody tr { transition: background-color .15s; }
+    .leaderboard-table tbody tr:hover { background: rgba(16,185,129,0.06); }
+    .leaderboard-table tbody tr:last-child td { border-bottom: none; }
+    .leaderboard-table td.num { font-variant-numeric: tabular-nums; font-weight: 600; color: #f8fafc; }
+    .rank-chip { display: inline-grid; place-items: center; min-width: 32px; height: 32px; padding: 0 0.5rem; border-radius: 0.7rem; background: #0f172a; border: 1px solid #334155; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+    .checker-card { border-top: 1px solid #334155; border-radius: 1.5rem; background: rgba(30,41,59,0.6); }
+    .checker-card h3 i { color: #10b981 !important; }
+    .checker-input-group { align-items: stretch; }
+    .checker-input-group .glass { flex: 1; min-width: 220px; }
+    .checker-input-group .glass input { padding: 0.95rem 1rem; }
+    .checker-btn { background: #10b981; border-radius: 1rem; min-height: 52px; padding: 0 1.5rem; }
+    .checker-btn:hover { background: #34d399; }
+    .checker-result { border-radius: 1rem; }
+
+    @media (max-width: 600px) {
+      .podium { grid-template-columns: 1fr; gap: 0.6rem; }
+      .podium-card.p1 { order: -1; }
+      .podium-card, .podium-card.p1 { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 0.9rem; text-align: left; padding: 0.9rem 1rem; }
+      .podium-medal { margin: 0; width: 40px; height: 40px; }
+      .podium-pts { margin-top: 0; font-size: 1.3rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { .user-card, .uc-bar > div { transition: none; } }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    /* --- PHONES --- */
+    @media (max-width: 1100px) {
+      nav { flex-direction: column; align-items: stretch; gap: 0.6rem; padding: 0.8rem 1rem; }
+      .nav-links { overflow-x: auto; gap: 0.3rem; scrollbar-width: none; }
+      .nav-links button { white-space: nowrap; padding: 0.45rem 0.7rem; font-size: 0.85rem; }
+      .leaderboard-table th:nth-child(3), .leaderboard-table td:nth-child(3) { display: none; }
+      .leaderboard-table th, .leaderboard-table td { padding: 0.75rem; }
+      .checker-input-group input { min-width: 0; }
+      .hero-box { padding: 1.5rem; }
+      .hero-box h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR NAVIGATION -->
+  <nav>
+    <div class="logo"><i class="fa-solid fa-leaf"></i> Eco-Station</div>
+    <ul class="nav-links">
+      <li><button class="active" onclick="switchPage('dashboard', this)"><i class="fa-solid fa-gauge"></i> Dashboard</button></li>
+      <li><button onclick="switchPage('leaderboard', this)"><i class="fa-solid fa-trophy"></i> Leaderboard</button></li>
+      <li><button onclick="switchPage('rewards', this)"><i class="fa-solid fa-gift"></i> Rewards</button></li>
+      <li><button onclick="switchPage('about', this)"><i class="fa-solid fa-circle-info"></i> About</button></li>
+      <li><button id="authNavBtn" onclick="switchPage('auth', this)"><i class="fa-solid fa-user"></i> <span id="authNavLabel">Sign In</span></button></li>
+    </ul>
+  </nav>
+
+  <main>
+    <!-- PAGE 1: LIVE DASHBOARD -->
+    <div id="dashboard" class="page active">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title reveal d1">Live <strong>recycling</strong> feed</h1>
+          <p class="page-sub reveal d2">Tap your card at the bin and your points update here in real time.</p>
+        </div>
+        <div class="status-badge reveal d2" role="status"><div class="status-dot" id="statusDot"></div> <span id="statusText">Connecting to Firebase...</span></div>
+      </div>
+      <section class="hero-panel reveal d3" aria-label="Station totals">
+        <div class="stats-strip">
+          <div class="stat"><div class="label">Registered users</div><div class="value" id="statUsers">–</div></div>
+          <div class="stat"><div class="label">Total points</div><div class="value" id="statPoints">–</div></div>
+          <div class="stat"><div class="label">Items sorted (est.)</div><div class="value" id="statItems">–</div></div>
+          <div class="stat"><div class="label">Wet bin</div><div class="value" id="statWet">–</div></div>
+          <div class="stat"><div class="label">Dry bin</div><div class="value" id="statDry">–</div></div>
+        </div>
+      </section>
+      <div class="user-grid reveal d4" id="userContainer">
+        <p class="empty-state">Connecting to live database...</p>
+      </div>
+    </div>
+
+    <!-- PAGE 2: LEADERBOARD -->
+    <div id="leaderboard" class="page">
+      <h1 class="page-title reveal d1">Recycling <strong>champions</strong></h1>
+      <p class="page-sub reveal d2">Top contributors, ranked live by points earned.</p>
+
+      <div class="podium reveal d3" id="podium" aria-label="Top three"></div>
+
+      <div class="table-shell reveal d4">
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>User Name</th>
+            <th>Card UID</th>
+            <th>Total Points</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardBody">
+          <!-- Rows inserted via JS -->
+        </tbody>
+      </table>
+      </div>
+
+      <!-- POINTS CHECKER BELOW LEADERBOARD -->
+      <div class="checker-card reveal d5">
+        <h3><i class="fa-solid fa-magnifying-glass" style="color: #38bdf8;"></i> Check My Rank & Points</h3>
+        <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.2rem;">Enter your Card UID or User Name to lookup your score.</p>
+
+        <div class="checker-input-group">
+          <div class="glass"><input type="text" id="checkQuery" aria-label="Card UID or name" placeholder="Card UID (e.g. A3 5F 8C 12) or name" onkeydown="if(event.key==='Enter') checkUserScore()"></div>
+          <button class="checker-btn" onclick="checkUserScore()"><i class="fa-solid fa-search"></i> Lookup</button>
+        </div>
+
+        <div id="checkerResult" class="checker-result"></div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: REWARDS CATALOG -->
+    <div id="rewards" class="page">
+      <h2>Earn Certificates</h2>
+      <p style="color: #94a3b8; margin-top: 0.3rem;">Reach a points milestone to earn an Eco-Station certificate. Scroll, drag or use the arrow keys to turn the wheel.</p>
+
+      <div class="wheel-wrap">
+        <section class="wheel" id="rewardWheel" aria-label="Certificates wheel">
+          <div class="wheel-stage" id="wheelStage" tabindex="0" role="listbox" aria-label="Certificates">
+            <div class="wheel-rig" id="wheelRig"></div>
+          </div>
+          <div class="wheel-label" id="wheelLabel">Certificates</div>
+          <div class="wheel-title" id="wheelTitle" aria-hidden="true"></div>
+          <div class="wheel-hint" id="wheelHint" aria-hidden="true"><i class="fa-solid fa-computer-mouse"></i> Scroll to turn</div>
+        </section>
+
+        <aside class="wheel-side">
+          <ol class="wheel-index" id="wheelIndex"></ol>
+          <div class="card wheel-detail" aria-live="polite">
+            <h3 id="rwName"></h3>
+            <p id="rwDesc"></p>
+            <div class="pts" style="font-size: 1.5rem;" id="rwPts"></div>
+            <button class="btn-claim" id="rwRedeem">Claim Certificate</button>
+          </div>
+          <div class="redeem-note" id="redeemNote" role="status">Show your RFID card to the station administrator to claim your certificate.</div>
+          <div class="wheel-nav">
+            <button type="button" id="wheelPrev" aria-label="Previous certificate"><i class="fa-solid fa-chevron-up" aria-hidden="true"></i></button>
+            <button type="button" id="wheelNext" aria-label="Next certificate"><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <!-- PAGE 4: EXPANDED ABOUT PAGE -->
+    <div id="about" class="page">
+      <h1 class="page-title reveal d1">How the <strong>Eco-Station</strong> works</h1>
+      <p class="page-sub reveal d2">Edge-computing vision, two ESP32 boards, a solenoid lock and real-time cloud sync, working together to sort waste automatically and reward the people who recycle.</p>
+
+      <!-- ANIMATED PIPELINE (synced with the workflow cards below) -->
+      <section class="hero-panel about-hero reveal d3" aria-labelledby="flowCaption">
+        <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 300" role="img" aria-label="Animated diagram: an RFID card unlocks the chute, the camera classifies the item, the servo flap routes it to the wet or dry bin, and points sync to the cloud.">
+          <!-- wires -->
+          <path class="wire" id="w1" d="M120 150 H200"/>
+          <path class="wire" id="w2" d="M262 150 H385"/>
+          <path class="wire" id="w3" d="M455 150 H530"/>
+          <path class="wire" id="w4" d="M590 120 C620 70 660 60 690 70"/>
+
+          <!-- 1 RFID reader + card -->
+          <g data-step="1">
+            <rect class="node" x="40" y="110" width="80" height="80" rx="16"/>
+            <g class="rfid-card"><rect x="10" y="128" width="54" height="36" rx="6" fill="#38bdf8"/><rect x="18" y="138" width="14" height="10" rx="2" fill="#0c4a6e"/></g>
+            <path d="M92 138 a14 14 0 0 1 0 24 M100 132 a22 22 0 0 1 0 36" fill="none" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
+            <text class="lbl" x="80" y="215" text-anchor="middle">RFID tap</text>
+          </g>
+
+          <!-- 2 chute + solenoid door -->
+          <g data-step="2">
+            <rect class="node" x="200" y="60" width="62" height="130" rx="14"/>
+            <rect class="door" x="204" y="72" width="54" height="8" rx="3" fill="#f59e0b"/>
+            <text class="lbl" x="231" y="215" text-anchor="middle">Chute lock</text>
+          </g>
+
+          <!-- 3 camera -->
+          <g data-step="3">
+            <rect class="node" x="385" y="88" width="70" height="52" rx="14"/>
+            <circle cx="420" cy="114" r="14" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+            <circle class="flash" cx="420" cy="114" r="30" fill="#f8fafc" fill-opacity="0.22"/>
+            <path class="flash" d="M404 142 L380 196 H460 L436 142 Z" fill="#f8fafc" fill-opacity="0.12"/>
+            <text class="verdict" id="verdict" x="420" y="74" text-anchor="middle" fill="#34d399">DRY</text>
+            <text class="lbl" x="420" y="215" text-anchor="middle">ESP32-CAM</text>
+          </g>
+
+          <!-- 4 servo flap + bins -->
+          <g data-step="4">
+            <circle class="node" cx="560" cy="120" r="14"/>
+            <rect class="flap" id="flap" x="556" y="126" width="8" height="58" rx="4" fill="#10b981"/>
+            <rect class="node" x="478" y="220" width="72" height="60" rx="12"/>
+            <rect class="node" x="570" y="220" width="72" height="60" rx="12"/>
+            <text class="lbl" x="514" y="255" text-anchor="middle">Wet</text>
+            <text class="lbl" x="606" y="255" text-anchor="middle">Dry</text>
+          </g>
+
+          <!-- 5 cloud -->
+          <g data-step="5">
+            <circle class="cloud-pulse" cx="728" cy="72" r="34" fill="none" stroke="#10b981" stroke-width="2"/>
+            <path class="node" d="M700 92 a20 20 0 0 1 4 -39 a26 26 0 0 1 49 6 a17 17 0 0 1 1 33 Z"/>
+            <text x="727" y="80" text-anchor="middle" fill="#f59e0b" font-size="18" font-weight="700" aria-hidden="true">&#x2601;</text>
+            <text class="pts-pop" x="728" y="36" text-anchor="middle">+10 pts</text>
+            <text class="lbl" x="728" y="125" text-anchor="middle">Firebase</text>
+          </g>
+
+          <!-- the waste item -->
+          <g class="item" id="flowItem"><rect x="-9" y="-14" width="18" height="28" rx="5" fill="#38bdf8"/><rect x="-5" y="-19" width="10" height="6" rx="2" fill="#bae6fd"/></g>
+        </svg>
+        <div class="flow-controls">
+          <p class="flow-caption" id="flowCaption" aria-live="polite"></p>
+          <button type="button" class="flow-btn" id="flowToggle" aria-pressed="false"><i class="fa-solid fa-pause" aria-hidden="true"></i> <span>Pause</span></button>
+        </div>
+      </section>
+
+      <!-- SYSTEM METRICS OVERVIEW -->
+      <div class="metrics-container">
+        <div class="metric-card sr"><h3 data-count="94.8" data-decimals="1" data-suffix="%">94.8%</h3><p>Classification accuracy</p></div>
+        <div class="metric-card sr"><h3>&lt; 2.5s</h3><p>Classification speed</p></div>
+        <div class="metric-card sr"><h3 data-count="100" data-suffix="%">100%</h3><p>Automated cloud sync</p></div>
+        <div class="metric-card sr"><h3>0</h3><p>Manual sorting needed</p></div>
+      </div>
+
+      <!-- WORKFLOW STEP-BY-STEP -->
+      <h2 class="section-title sr"><i class="fa-solid fa-gears" aria-hidden="true"></i> End-to-end sorting workflow</h2>
+      <div class="workflow-steps" id="flowSteps">
+        <button type="button" class="step-card sr" data-goto="1"><div class="step-num">01</div><h4>RFID authentication</h4><p>User scans their RFID tag (RC522 module). The ESP32 verifies the UID and signals the solenoid to unlock the chute door.</p></button>
+        <button type="button" class="step-card sr" data-goto="2"><div class="step-num">02</div><h4>Deposition &amp; detection</h4><p>The internal flash LED lights up and the camera node is notified that an item has been deposited.</p></button>
+        <button type="button" class="step-card sr" data-goto="3"><div class="step-num">03</div><h4>Vision classification</h4><p>The ESP32-CAM captures the item image and runs object classification to categorize the waste as Dry/Recyclable or Wet/Organic.</p></button>
+        <button type="button" class="step-card sr" data-goto="4"><div class="step-num">04</div><h4>Mechanical routing</h4><p>The main ESP32 signals the high-torque servo motor (MG996R) to pivot the diverter flap left or right into the bin.</p></button>
+        <button type="button" class="step-card sr" data-goto="5"><div class="step-num">05</div><h4>Cloud auto-awarding</h4><p>A secure HTTPS request atomically adds the points on Firebase, reflecting live points instantly across all web clients.</p></button>
+      </div>
+
+      <!-- DEEP-DIVE TECHNICAL CARDS -->
+      <h2 class="section-title sr"><i class="fa-solid fa-code-branch" aria-hidden="true"></i> Core system modules</h2>
+      <div class="about-grid">
+
+        <div class="module-card sr">
+          <div class="module-icon" style="background:#38bdf822; color:#38bdf8;"><i class="fa-solid fa-microchip" aria-hidden="true"></i></div>
+          <h3>Dual-Node Hardware Architecture</h3>
+          <p>
+            By separating heavy visual processing from core mechanical timing, the system achieves maximum stability:
+          </p>
+          <ul>
+            <li><strong>Master Node (ESP32-DevKit):</strong> Manages RFID reader, LCD I2C, solenoid locking, servo PWM, and Wi-Fi requests.</li>
+            <li><strong>Vision Node (ESP32-CAM):</strong> Handles snapshot capture, LED flash illumination, and UART serial output.</li>
+          </ul>
+          <div class="tech-pill-list">
+            <span class="tech-pill">ESP32 30-Pin</span>
+            <span class="tech-pill">ESP32-CAM</span>
+            <span class="tech-pill">UART 115200</span>
+            <span class="tech-pill">SPI / I2C</span>
+          </div>
+        </div>
+
+        <div class="module-card sr">
+          <div class="module-icon" style="background:#10b98122; color:#10b981;"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
+          <h3>Anti-Farming Security Protocols</h3>
+          <p>
+            Built-in hardware and software guardrails prevent users from exploit-farming reward points without proper disposal:
+          </p>
+          <ul>
+            <li><strong>Physical Lock:</strong> Solenoid remains locked until a valid RFID card is swiped.</li>
+            <li><strong>Visual Verification:</strong> Camera validates object presence before triggering servo or points payload.</li>
+          </ul>
+          <div class="tech-pill-list">
+            <span class="tech-pill">12V Solenoid</span>
+            <span class="tech-pill">Session Locking</span>
+          </div>
+        </div>
+
+        <div class="module-card sr">
+          <div class="module-icon" style="background:#f59e0b22; color:#f59e0b;"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i></div>
+          <h3>Realtime Web Infrastructure</h3>
+          <p>
+            Zero page refreshes required. The dashboard updates live via web sockets:
+          </p>
+          <ul>
+            <li><strong>Firebase REST API:</strong> ESP32 sends HTTPS requests over Wi-Fi (server-side increments for points, PATCH for bin levels).</li>
+            <li><strong>Event Listeners:</strong> Client dashboard uses JavaScript on('value') listeners for zero-latency point feedback.</li>
+            <li><strong>Leaderboard Engine:</strong> Auto-sorts user metrics dynamically as scores update.</li>
+          </ul>
+          <div class="tech-pill-list">
+            <span class="tech-pill">Firebase NoSQL</span>
+            <span class="tech-pill">REST HTTP PATCH</span>
+            <span class="tech-pill">Vanilla JS</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PAGE: AUTH -->
+    <div id="auth" class="page">
+      <div id="authConfigNotice" class="auth-notice" style="display:none;">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> Firebase Auth isn't configured yet.
+      </div>
+
+      <!-- Signed-out view -->
+      <div id="authForms" class="auth-shell">
+        <section class="auth-form-col">
+          <div class="auth-form-inner">
+            <h1 class="auth-title reveal d1" id="authTitle"><span>Welcome</span> <strong>back</strong></h1>
+            <p class="auth-sub reveal d2" id="authSub">Sign in to track your eco-points, see your rank and earn certificates.</p>
+
+            <form id="authForm" novalidate>
+              <div class="auth-field reveal d3" id="nameField" hidden>
+                <label for="authName">Full name</label>
+                <div class="glass"><input type="text" id="authName" autocomplete="name" placeholder="Your name"></div>
+              </div>
+              <div class="auth-field reveal d3">
+                <label for="authEmail">Email address</label>
+                <div class="glass"><input type="email" id="authEmail" autocomplete="email" inputmode="email" placeholder="you@example.com" required></div>
+              </div>
+              <div class="auth-field reveal d4">
+                <label for="authPassword">Password</label>
+                <div class="glass">
+                  <input type="password" id="authPassword" class="has-toggle" autocomplete="current-password" placeholder="At least 6 characters" required minlength="6">
+                  <button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password" aria-pressed="false"><i class="fa-regular fa-eye" aria-hidden="true"></i></button>
+                </div>
+              </div>
+              <div class="auth-row reveal d5">
+                <label class="remember"><input type="checkbox" id="rememberMe" checked> Keep me signed in</label>
+                <button type="button" class="auth-link" id="forgotLink" onclick="resetPassword()">Reset password</button>
+              </div>
+              <button type="submit" class="auth-btn reveal d5" id="authSubmit"><span class="spin" aria-hidden="true"></span><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> <span id="authSubmitLabel">Sign In</span></button>
+            </form>
+
+            <div class="auth-msg" id="authMsg" role="alert" aria-live="polite"></div>
+
+            <div class="auth-divider reveal d6">Or continue with</div>
+            <button class="auth-btn secondary reveal d6" id="googleBtn" onclick="signInWithGoogle()">
+              <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>
+              Continue with Google
+            </button>
+            <p class="auth-switch reveal d6"><span id="switchText">New to Eco-Station?</span> <button type="button" class="auth-link" id="switchBtn">Create account</button></p>
+          </div>
+        </section>
+
+        <section class="auth-hero" aria-label="Live recycling impact">
+          <div class="auth-hero-stats">
+            <div class="impact-card"><div class="k">Cards registered</div><div class="v" id="heroCards">–</div></div>
+            <div class="impact-card"><div class="k">Points earned</div><div class="v" id="heroPoints">–</div></div>
+            <div class="impact-card"><div class="k">Top recycler</div><div class="v small" id="heroTop">–</div></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Signed-in view -->
+      <div id="authProfile" class="card auth-profile" style="display:none;">
+        <div class="auth-avatar" id="profileAvatar"><i class="fa-solid fa-user" aria-hidden="true"></i></div>
+        <h2 id="profileName">User</h2>
+        <p id="profileEmail" style="color:#94a3b8; margin:0.3rem 0 1.5rem;"></p>
+        <button class="auth-btn secondary" onclick="signOutUser()"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign Out</button>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>Smart AI Waste Segregator • Multi-Page Web Portal connected to Realtime Database</p>
+  </footer>
+
+  <script>
+    // --- 1. PAGE NAVIGATION LOGIC ---
+    function switchPage(pageId, btn) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-links button').forEach(b => b.classList.remove('active'));
+
+      document.getElementById(pageId).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    // --- 2. FIREBASE REALTIME DATABASE CONFIGURATION ---
+    // Expected data shape (this is what the ESP32 should write to):
+    //   /users/{cardUID}/name    -> string
+    //   /users/{cardUID}/points  -> number (ESP32 increments this on every valid scan)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCkHmvYQDjLInM7oWkK_bgU8j1hvPreyjk",
+      authDomain: "smart-eco-station.firebaseapp.com",
+      databaseURL: "https://smart-eco-station-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "smart-eco-station",
+      storageBucket: "smart-eco-station.firebasestorage.app",
+      messagingSenderId: "407471389746",
+      appId: "1:407471389746:web:e123ae86371925f42f902b"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // Cache sorted users array globally for the checker tool
+    let currentLeaderboardData = [];
+
+    const POINTS_PER_ITEM = 10;   // must match POINTS_PER_ITEM in EcoStation_Main.ino
+
+    // Escape anything typed by users before putting it into innerHTML
+    function esc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // RFID UIDs are 4, 7 or 10 hex bytes: "A3 5F 8C 12". Also accepts "a35f8c12".
+    function normalizeUid(raw) {
+      const hex = String(raw).toUpperCase().replace(/[^0-9A-F]/g, '');
+      if (![8, 14, 20].includes(hex.length)) return null;
+      return hex.match(/../g).join(' ');
+    }
+
+    function dbErrorHtml(err) {
+      const denied = /permission/i.test(err && err.message);
+      return `<p class="db-error"><i class="fa-solid fa-triangle-exclamation"></i> ${denied
+        ? 'Firebase denied access to this data. Check your Realtime Database rules.'
+        : 'Could not load data: ' + esc(err && err.message)}</p>`;
+    }
+
+    // --- 3. LIVE DATA SYNC (DASHBOARD & LEADERBOARD) ---
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+
+    database.ref('.info/connected').on('value', (snap) => {
+      const isConnected = snap.val() === true;
+      statusDot.classList.toggle('offline', !isConnected);
+      statusText.textContent = isConnected ? 'Live Firebase Link' : 'Disconnected';
+    });
+
+    database.ref('users').on('value', (snapshot) => {
+      const userContainer = document.getElementById('userContainer');
+      const leaderboardBody = document.getElementById('leaderboardBody');
+
+      userContainer.innerHTML = '';
+      leaderboardBody.innerHTML = '';
+      currentLeaderboardData = [];
+
+      const data = snapshot.val();
+      if (data) {
+        let userArray = [];
+
+        Object.keys(data).forEach((key) => {
+          userArray.push({
+            uid: key,
+            name: data[key].name || "User " + key,
+            points: Number(data[key].points) || 0
+          });
+        });
+
+        // SORT USER ARRAY BY POINTS (DESCENDING FOR LEADERBOARD)
+        userArray.sort((a, b) => b.points - a.points);
+        currentLeaderboardData = userArray;
+
+        // POPULATE LIVE DASHBOARD CARDS
+        const REWARD_TIERS = [100, 250, 500]; // matches the certificate tiers on the Rewards page
+        userContainer.innerHTML = userArray.map((user, i) => {
+          const next = REWARD_TIERS.find(t => t > user.points);
+          const prev = [...REWARD_TIERS].reverse().find(t => t <= user.points) || 0;
+          const pct = next ? Math.round((user.points - prev) / (next - prev) * 100) : 100;
+          const initial = esc((user.name.trim()[0] || '?').toUpperCase());
+          return `
+            <article class="user-card">
+              <div class="uc-head">
+                <div class="uc-avatar" aria-hidden="true">${initial}</div>
+                <div style="min-width:0;"><div class="uc-name">${esc(user.name)}</div><div class="uc-uid">${esc(user.uid)}</div></div>
+                <span class="uc-rank">#${i + 1}</span>
+              </div>
+              <div class="uc-pts">${user.points} <span>pts</span></div>
+              <div class="uc-bar" role="progressbar" aria-label="Progress to next certificate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>
+              <div class="uc-meta">
+                <span><i class="fa-solid fa-recycle" aria-hidden="true"></i> ~${Math.floor(user.points / POINTS_PER_ITEM)} items</span>
+                <span>${next ? `${next - user.points} pts to next certificate` : 'All certificates earned'}</span>
+              </div>
+            </article>`;
+        }).join('');
+
+        // PODIUM (top 3) + TABLE
+        const medals = ['fa-crown', 'fa-medal', 'fa-medal'];
+        document.getElementById('podium').innerHTML = [1, 0, 2].map(i => {
+          const u = userArray[i];
+          if (!u) return `<div class="podium-card p${i + 1} empty"><div class="podium-medal" aria-hidden="true"><i class="fa-solid ${medals[i]}"></i></div>Spot #${i + 1} is open</div>`;
+          return `<div class="podium-card p${i + 1}">
+              <div class="podium-medal" aria-hidden="true"><i class="fa-solid ${medals[i]}"></i></div>
+              <div class="podium-name"><span class="sr-only">Rank ${i + 1}: </span>${esc(u.name)}</div>
+              <div class="podium-pts">${u.points} <span>pts</span></div>
+            </div>`;
+        }).join('');
+
+        leaderboardBody.innerHTML = userArray.map((user, index) => `
+            <tr>
+              <td><span class="rank-chip">${index + 1}</span></td>
+              <td><strong>${esc(user.name)}</strong></td>
+              <td style="font-family: monospace; color: #64748b;">${esc(user.uid)}</td>
+              <td class="num">${user.points} PTS</td>
+            </tr>`).join('');
+
+      } else {
+        userContainer.innerHTML = '<p class="empty-state">No RFID scans recorded yet. Tap a registered card at the station to appear here.</p>';
+        document.getElementById('podium').innerHTML = '';
+        leaderboardBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #64748b;">No data available</td></tr>';
+      }
+
+      const totalPts = currentLeaderboardData.reduce((sum, u) => sum + u.points, 0);
+      document.getElementById('statUsers').textContent = currentLeaderboardData.length;
+      document.getElementById('statPoints').textContent = totalPts;
+      document.getElementById('statItems').textContent = Math.floor(totalPts / POINTS_PER_ITEM);
+    }, (err) => {
+      document.getElementById('userContainer').innerHTML = dbErrorHtml(err);
+      document.getElementById('leaderboardBody').innerHTML = `<tr><td colspan="4">${dbErrorHtml(err)}</td></tr>`;
+    });
+
+    // Public bin summary on the dashboard (first station's wet/dry levels)
+    database.ref('bins').on('value', (snapshot) => {
+      const first = Object.values(snapshot.val() || {})[0];
+      const cols = (first && first.columns) || {};
+      ['wet', 'dry'].forEach(k => {
+        const el = document.getElementById(k === 'wet' ? 'statWet' : 'statDry');
+        const v = cols[k];
+        el.innerHTML = v == null ? '–' : `${Number(v) || 0}<small>%</small>`;
+        el.style.color = v == null ? '' : v >= 95 ? '#f87171' : v >= 75 ? '#fbbf24' : '';
+      });
+    }, () => {});
+
+    // --- 4. POINTS & RANK CHECKER FUNCTION (read-only lookup, sits below the leaderboard) ---
+    function checkUserScore() {
+      const query = document.getElementById('checkQuery').value.trim().toLowerCase().replace(/\s+/g, ' ');
+      const resultBox = document.getElementById('checkerResult');
+
+      if (!query) {
+        resultBox.style.display = 'block';
+        resultBox.className = 'checker-result error';
+        resultBox.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Please enter a valid UID or User Name.';
+        return;
+      }
+
+      const queryUid = normalizeUid(query);
+      const foundIndex = currentLeaderboardData.findIndex(
+        u => (queryUid && u.uid === queryUid) || u.uid.toLowerCase() === query || u.name.toLowerCase().includes(query)
+      );
+
+      resultBox.style.display = 'block';
+
+      if (foundIndex !== -1) {
+        const match = currentLeaderboardData[foundIndex];
+        const rank = foundIndex + 1;
+        const itemsRecycled = Math.floor(match.points / POINTS_PER_ITEM);
+
+        resultBox.className = 'checker-result success';
+        resultBox.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+              <h4 style="color: #f8fafc; font-size: 1.1rem; margin-bottom: 0.2rem;">${esc(match.name)}</h4>
+              <p style="color: #64748b; font-size: 0.85rem; font-family: monospace;">UID: ${esc(match.uid)}</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="background: #38bdf822; color: #38bdf8; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: 700; font-size: 0.9rem;">
+                Rank #${rank}
+              </span>
+              <div style="color: #10b981; font-size: 1.3rem; font-weight: 800; margin-top: 0.3rem;">
+                ${match.points} <span style="font-size: 0.8rem; color: #94a3b8;">PTS</span>
+              </div>
+            </div>
+          </div>
+          <p style="color: #cbd5e1; font-size: 0.85rem; margin-top: 0.8rem; border-top: 1px solid #334155; padding-top: 0.5rem;">
+            <i class="fa-solid fa-leaf" style="color: #10b981;"></i> Estimated Recycled Items: <strong>${itemsRecycled}</strong> items
+          </p>
+        `;
+      } else {
+        resultBox.className = 'checker-result error';
+        resultBox.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> No user found matching "<strong>${esc(query)}</strong>". Please check your card UID.`;
+      }
+    }
+
+  </script>
+  <script>
+    // --- 6. AUTH PAGE ---
+    const authConfigured = !firebaseConfig.apiKey.startsWith('YOUR_');
+    const auth = authConfigured ? firebase.auth() : null;
+    let authMode = 'signin';
+
+    const authMsg = document.getElementById('authMsg');
+    function showAuthMsg(type, text) { authMsg.className = 'auth-msg ' + type; authMsg.textContent = text; }
+    function clearAuthMsg() { authMsg.className = 'auth-msg'; authMsg.textContent = ''; }
+
+    function setAuthMode(mode) {
+      authMode = mode;
+      const signup = mode === 'signup';
+      document.getElementById('nameField').hidden = !signup;
+      document.getElementById('forgotLink').hidden = signup;
+      document.getElementById('authTitle').innerHTML = signup ? '<span>Join</span> <strong>Eco-Station</strong>' : '<span>Welcome</span> <strong>back</strong>';
+      document.getElementById('authSub').textContent = signup
+        ? 'Create an account to link your RFID card and start earning eco-points.'
+        : 'Sign in to track your eco-points, see your rank and earn certificates.';
+      document.getElementById('authSubmitLabel').textContent = signup ? 'Create Account' : 'Sign In';
+      document.getElementById('switchText').textContent = signup ? 'Already have an account?' : 'New to Eco-Station?';
+      document.getElementById('switchBtn').textContent = signup ? 'Sign in' : 'Create account';
+      document.getElementById('authPassword').autocomplete = signup ? 'new-password' : 'current-password';
+      clearAuthMsg();
+    }
+    document.getElementById('switchBtn').addEventListener('click', () => setAuthMode(authMode === 'signup' ? 'signin' : 'signup'));
+    document.getElementById('authForm').addEventListener('submit', (e) => { e.preventDefault(); submitAuth(); });
+
+    const pwInput = document.getElementById('authPassword');
+    const pwToggle = document.getElementById('pwToggle');
+    pwToggle.addEventListener('click', () => {
+      const show = pwInput.type === 'password';
+      pwInput.type = show ? 'text' : 'password';
+      pwToggle.setAttribute('aria-pressed', String(show));
+      pwToggle.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      pwToggle.innerHTML = `<i class="fa-regular ${show ? 'fa-eye-slash' : 'fa-eye'}" aria-hidden="true"></i>`;
+    });
+
+    // "Keep me signed in" maps to Firebase persistence: LOCAL survives browser restarts, SESSION ends with the tab.
+    function applyPersistence() {
+      if (!auth) return Promise.resolve();
+      const keep = document.getElementById('rememberMe').checked;
+      return auth.setPersistence(keep ? firebase.auth.Auth.Persistence.LOCAL : firebase.auth.Auth.Persistence.SESSION);
+    }
+
+    // Live impact numbers for the hero panel (public data, same path as the leaderboard).
+    database.ref('users').on('value', (snap) => {
+      const list = Object.values(snap.val() || {}).map(u => ({ name: u.name || 'Anonymous', points: Number(u.points) || 0 }));
+      const top = list.sort((a, b) => b.points - a.points)[0];
+      document.getElementById('heroCards').textContent = list.length.toLocaleString('en-IN');
+      document.getElementById('heroPoints').textContent = list.reduce((s, u) => s + u.points, 0).toLocaleString('en-IN');
+      document.getElementById('heroTop').textContent = top ? `${top.name} · ${top.points} pts` : 'Be the first';
+    }, () => {});
+
+    function friendlyAuthError(err) {
+      const map = {
+        'auth/invalid-email': 'That email address is not valid.',
+        'auth/user-not-found': 'No account found with that email.',
+        'auth/wrong-password': 'Incorrect password.',
+        'auth/invalid-login-credentials': 'Incorrect email or password. If you signed up with Google, use "Continue with Google" or "Forgot password?" to set one.',
+        'auth/invalid-credential': 'Incorrect email or password. If you signed up with Google, use "Continue with Google" or "Forgot password?" to set one.',
+        'auth/operation-not-allowed': 'Email/password sign-in is not enabled for this project.',
+        'auth/network-request-failed': 'Network error. Check your connection.',
+        'auth/popup-blocked': 'Popup blocked. Allow popups for this site and try again.',
+        'auth/email-already-in-use': 'An account with that email already exists.',
+        'auth/weak-password': 'Password must be at least 6 characters.',
+        'auth/popup-closed-by-user': 'Google sign-in was cancelled.',
+        'auth/too-many-requests': 'Too many attempts. Please try again later.'
+      };
+      if (map[err.code]) return map[err.code];
+      // Older SDKs wrap unknown server codes as raw JSON in err.message.
+      if (/INVALID_LOGIN_CREDENTIALS|INVALID_PASSWORD|EMAIL_NOT_FOUND/.test(err.message || '')) {
+        return map['auth/invalid-login-credentials'];
+      }
+      return 'Something went wrong. Please try again.';
+    }
+
+    async function submitAuth() {
+      if (!auth) return showAuthMsg('error', 'Firebase Auth is not configured yet.');
+      const email = document.getElementById('authEmail').value.trim();
+      const password = document.getElementById('authPassword').value;
+      const btn = document.getElementById('authSubmit');
+      if (!email || !password) return showAuthMsg('error', 'Enter your email and password.');
+      btn.disabled = true;
+      btn.classList.add('busy');
+      clearAuthMsg();
+      try {
+        await applyPersistence();
+        if (authMode === 'signup') {
+          const name = document.getElementById('authName').value.trim();
+          const cred = await auth.createUserWithEmailAndPassword(email, password);
+          if (name) {
+            await cred.user.updateProfile({ displayName: name });
+            renderAuthState(auth.currentUser);
+          }
+        } else {
+          await auth.signInWithEmailAndPassword(email, password);
+        }
+      } catch (err) {
+        showAuthMsg('error', friendlyAuthError(err));
+      } finally {
+        btn.disabled = false;
+        btn.classList.remove('busy');
+      }
+    }
+
+    async function signInWithGoogle() {
+      if (!auth) return showAuthMsg('error', 'Firebase Auth is not configured yet.');
+      try {
+        await applyPersistence();
+        await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+      } catch (err) {
+        showAuthMsg('error', friendlyAuthError(err));
+      }
+    }
+
+    async function resetPassword() {
+      if (!auth) return showAuthMsg('error', 'Firebase Auth is not configured yet.');
+      const email = document.getElementById('authEmail').value.trim();
+      if (!email) return showAuthMsg('error', 'Enter your email above first.');
+      try {
+        await auth.sendPasswordResetEmail(email);
+        showAuthMsg('success', 'Password reset email sent to ' + email + '.');
+      } catch (err) {
+        showAuthMsg('error', friendlyAuthError(err));
+      }
+    }
+
+    function signOutUser() { if (auth) auth.signOut(); }
+
+    function renderAuthState(user) {
+      document.getElementById('authForms').style.display = user ? 'none' : '';
+      document.getElementById('authProfile').style.display = user ? 'block' : 'none';
+      document.getElementById('authNavLabel').textContent = user ? 'Account' : 'Sign In';
+      if (!user) return;
+      document.getElementById('profileName').textContent = user.displayName || 'Eco-Station User';
+      document.getElementById('profileEmail').textContent = user.email || '';
+      const avatar = document.getElementById('profileAvatar');
+      if (user.photoURL) {
+        const img = document.createElement('img');
+        img.src = user.photoURL;
+        img.alt = '';
+        avatar.replaceChildren(img);
+      } else {
+        avatar.innerHTML = '<i class="fa-solid fa-user"></i>';
+      }
+      document.getElementById('authForm').reset();
+      clearAuthMsg();
+    }
+
+    if (auth) {
+      auth.onAuthStateChanged(renderAuthState);
+    } else {
+      document.getElementById('authConfigNotice').style.display = 'block';
+      document.querySelectorAll('#authForms button, #authForms input').forEach(el => {
+        if (el.id !== 'switchBtn') el.disabled = true;
+      });
+    }
+  </script>
+  <script>
+    // --- 7. REWARDS WHEEL ---
+    // Ported from the works-wheel component: one number, `turn`, drives every card.
+    // 0 = ring around the label, 1 = drum with reward 0 at the front, each +1 turns one more past.
+    (function () {
+      const REWARDS = [
+        { name: 'Eco Starter Certificate', desc: 'Your first milestone: about 10 items sorted correctly at the station.', pts: 100, icon: 'fa-seedling', bg: 'linear-gradient(135deg,#0369a1,#0c4a6e)' },
+        { name: 'Recycling Champion Certificate', desc: 'For consistent recyclers: about 25 items sorted correctly.', pts: 250, icon: 'fa-award', bg: 'linear-gradient(135deg,#047857,#064e3b)' },
+        { name: 'Sustainability Leader Certificate', desc: 'Our top honour: about 50 items sorted correctly.', pts: 500, icon: 'fa-trophy', bg: 'linear-gradient(135deg,#b45309,#78350f)' }
+      ];
+      // Geometry, tuned together (see original component): card vs stage, everything else vs card.
+      const CARD_H = 0.38, CARD_MAX_W = 0.5, RATIO = 1.45, STEP = 40, DRUM = 2.22, LENS = 2.7, RING_R = 1.14, BOW = 1.82, CULL = 1.6;
+      const WHEEL_UNITS = 900, DRAG_UNITS = 420, SETTLE = 140, EASE = 0.12;
+      const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      const rad = (d) => d * Math.PI / 180;
+
+      const stage = document.getElementById('wheelStage');
+      const rig = document.getElementById('wheelRig');
+      const label = document.getElementById('wheelLabel');
+      const title = document.getElementById('wheelTitle');
+      const index = document.getElementById('wheelIndex');
+      const count = REWARDS.length, last = count - 1;
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+      const cards = REWARDS.map((r, i) => {
+        const el = document.createElement('div');
+        el.className = 'wheel-card';
+        el.id = 'reward-' + i;
+        el.setAttribute('role', 'option');
+        el.setAttribute('aria-label', `${r.name}, ${r.pts} points`);
+        el.innerHTML = `<div class="wheel-face" style="background:${r.bg}"><i class="fa-solid ${r.icon}" aria-hidden="true"></i><div><div class="wf-name">${r.name}</div><div class="wf-pts">${r.pts} PTS</div></div></div>`;
+        rig.appendChild(el);
+        const li = document.createElement('li');
+        li.innerHTML = `<button type="button"><span>${r.name}</span><span>${r.pts}</span></button>`;
+        li.firstChild.addEventListener('click', () => to(i + 1));
+        index.appendChild(li);
+        return el;
+      });
+
+      let turn = 0, target = 0, active = -1, raf = 0, m = {};
+
+      function measure() {
+        const w = stage.clientWidth, h = stage.clientHeight;
+        const cardW = Math.min(h * CARD_H * RATIO, w * CARD_MAX_W), cardH = cardW / RATIO;
+        const ringR = cardH * RING_R;
+        m = { cardW, cardH, ringR, drumR: cardH * DRUM, bow: cardH * BOW,
+              ringScale: clamp(((2 * Math.PI * ringR) / count) * 0.82 / (cardW || 1), 0.16, 0.5) }; // capped: few rewards would otherwise cover the label
+        stage.style.perspective = cardH * LENS + 'px';
+        label.style.fontSize = title.style.fontSize = Math.max(18, cardH * 0.16) + 'px';
+        cards.forEach(c => Object.assign(c.style, { width: cardW + 'px', height: cardH + 'px', marginLeft: -cardW / 2 + 'px', marginTop: -cardH / 2 + 'px', fontSize: Math.max(11, cardH * 0.075) + 'px' }));
+        kick(true);
+      }
+
+      function setActive(i) {
+        if (i === active) return;
+        active = i;
+        const r = REWARDS[i];
+        title.textContent = r.name;
+        document.getElementById('rwName').textContent = r.name;
+        document.getElementById('rwDesc').textContent = r.desc;
+        document.getElementById('rwPts').textContent = r.pts + ' PTS';
+        document.getElementById('redeemNote').classList.remove('show');
+        stage.setAttribute('aria-activedescendant', 'reward-' + i);
+        cards.forEach((c, k) => c.setAttribute('aria-selected', String(k === i)));
+        [...index.querySelectorAll('button')].forEach((b, k) => b.setAttribute('aria-current', String(k === i)));
+      }
+
+      function draw() {
+        raf = 0;
+        const gap = target - turn;
+        turn = Math.abs(gap) < 0.0005 ? target : turn + gap * (reduced.matches ? 1 : EASE);
+        const t = turn, mix = clamp(t, 0, 1), pos = Math.max(0, t - 1);
+        rig.style.transform = `translateZ(${-mix * m.drumR}px)`;
+        cards.forEach((card, i) => {
+          const d = i - pos, drumDeg = d * STEP;
+          const bowX = -m.bow * (1 - Math.cos(rad(drumDeg)));
+          card.style.transform =
+            `translateX(${mix * bowX}px) rotateZ(${(1 - mix) * d * (360 / count)}deg) translateY(${-(1 - mix) * m.ringR}px)` +
+            ` rotateX(${mix * drumDeg}deg) translateZ(${mix * m.drumR}px)`;
+          card.style.opacity = mix > 0.5 && Math.abs(d) > CULL ? '0' : '1';
+          card.style.zIndex = String(Math.round(100 - Math.abs(d) * 2));
+          // Counter-rotate the face so ring cards stay readable instead of upside-down.
+          card.firstChild.style.transform = `rotate(${-(1 - mix) * d * (360 / count)}deg) scale(${m.ringScale + (1 - m.ringScale) * mix})`;
+        });
+        label.style.opacity = String(1 - mix);
+        title.style.opacity = String(mix);
+        document.getElementById('wheelHint').style.opacity = String(1 - mix);
+        setActive(clamp(Math.round(pos), 0, last));
+        if (turn !== target) raf = requestAnimationFrame(draw); // ponytail: idles when settled instead of a permanent rAF loop
+      }
+      function kick(force) { if (force) { cancelAnimationFrame(raf); raf = 0; } if (!raf) raf = requestAnimationFrame(draw); }
+      function to(next) { target = clamp(next, 0, last + 1); kick(); }
+      const step = (dir) => to(clamp(Math.round(target) + dir, 1, last + 1));
+
+      // Wheel: only swallow the scroll while there is still somewhere to turn, so the page scrolls on at either end.
+      let settling = 0;
+      stage.addEventListener('wheel', (e) => {
+        const next = target + e.deltaY / WHEEL_UNITS;
+        if (next > 0 && next < last + 1) e.preventDefault();
+        to(next);
+        clearTimeout(settling);
+        settling = setTimeout(() => to(Math.round(target)), SETTLE);
+      }, { passive: false });
+
+      let dragY = null;
+      stage.addEventListener('pointerdown', (e) => { dragY = e.clientY; stage.setPointerCapture(e.pointerId); });
+      stage.addEventListener('pointermove', (e) => { if (dragY === null) return; to(target + (dragY - e.clientY) / DRAG_UNITS); dragY = e.clientY; });
+      const endDrag = () => { dragY = null; if (target > 1) to(Math.round(target)); };
+      stage.addEventListener('pointerup', endDrag);
+      stage.addEventListener('pointercancel', endDrag);
+      stage.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowRight') step(1);
+        else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') step(-1);
+        else if (e.key === 'Home') to(1);
+        else if (e.key === 'End') to(last + 1);
+        else return;
+        e.preventDefault();
+      });
+      document.getElementById('wheelNext').addEventListener('click', () => step(1));
+      document.getElementById('wheelPrev').addEventListener('click', () => step(-1));
+      document.getElementById('rwRedeem').addEventListener('click', () => document.getElementById('redeemNote').classList.add('show'));
+
+      new ResizeObserver(measure).observe(stage); // also fires when the Rewards tab becomes visible
+      setActive(0);
+    })();
+  </script>
+  <script>
+    // --- 8. ABOUT PAGE MOTION ---
+    (function () {
+      const svg = document.getElementById('flowSvg');
+      const item = document.getElementById('flowItem');
+      const flap = document.getElementById('flap');
+      const verdict = document.getElementById('verdict');
+      const caption = document.getElementById('flowCaption');
+      const toggle = document.getElementById('flowToggle');
+      const steps = [...document.querySelectorAll('#flowSteps .step-card')];
+      const about = document.getElementById('about');
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+      const STEP_MS = 2200;
+      document.documentElement.style.setProperty('--step-ms', STEP_MS + 'ms');
+
+      const CAPTIONS = [
+        '<strong>1 · RFID tap.</strong> The card is verified and the solenoid unlocks the chute.',
+        '<strong>2 · Deposit.</strong> The item drops in and the camera node is woken up.',
+        '<strong>3 · Classify.</strong> The ESP32-CAM snaps a photo and decides wet or dry.',
+        '<strong>4 · Route.</strong> The MG996R servo tilts the flap and the item falls into its bin.',
+        '<strong>5 · Reward.</strong> Points are added on Firebase and show up live on every screen.'
+      ];
+      let phase = 1, dry = true, playing = !reduced.matches, timer = 0;
+
+      function itemAt(p) {
+        // [x, y, opacity] per phase; bins sit either side of the flap.
+        const binX = dry ? 606 : 514;
+        return [[231, 40, 0], [231, 150, 1], [420, 160, 1], [binX, 250, 1], [binX, 250, 0]][p - 1];
+      }
+
+      function render() {
+        svg.classList.remove('p1', 'p2', 'p3', 'p4', 'p5');
+        void svg.getBoundingClientRect(); // restart CSS keyframes for the new phase
+        svg.classList.add('p' + phase);
+        const [x, y, o] = itemAt(phase);
+        item.style.transform = `translate(${x}px, ${y}px)`;
+        item.style.opacity = o;
+        verdict.textContent = dry ? 'DRY' : 'WET';
+        verdict.setAttribute('fill', dry ? '#34d399' : '#f59e0b');
+        flap.style.transform = phase >= 4 ? `rotate(${dry ? -32 : 32}deg)` : 'none';
+        svg.querySelectorAll('[data-step]').forEach(g => g.classList.toggle('on', +g.dataset.step === phase));
+        ['w1', 'w2', 'w3', 'w4'].forEach((id, i) => document.getElementById(id).classList.toggle('live', phase === i + 2));
+        caption.innerHTML = CAPTIONS[phase - 1];
+        steps.forEach((c, i) => {
+          c.classList.toggle('active', i + 1 === phase);
+          c.classList.toggle('running', playing && i + 1 === phase);
+          c.setAttribute('aria-current', i + 1 === phase ? 'step' : 'false');
+        });
+        // force the progress bar to restart
+        const active = steps[phase - 1];
+        if (active && playing) { active.classList.remove('running'); void active.offsetWidth; active.classList.add('running'); }
+      }
+
+      function tick() {
+        phase = phase === 5 ? 1 : phase + 1;
+        if (phase === 1) dry = !dry; // alternate wet / dry each cycle
+        render();
+        schedule();
+      }
+      function schedule() {
+        clearTimeout(timer);
+        // Only animate while the About page is on screen and the tab is visible.
+        if (playing && about.classList.contains('active') && !document.hidden) timer = setTimeout(tick, STEP_MS);
+      }
+      function setPlaying(on) {
+        playing = on;
+        toggle.setAttribute('aria-pressed', String(!on));
+        toggle.innerHTML = on ? '<i class="fa-solid fa-pause" aria-hidden="true"></i> <span>Pause</span>'
+                              : '<i class="fa-solid fa-play" aria-hidden="true"></i> <span>Play</span>';
+        render();
+        schedule();
+      }
+
+      toggle.addEventListener('click', () => setPlaying(!playing));
+      steps.forEach(c => c.addEventListener('click', () => { phase = +c.dataset.goto; setPlaying(false); }));
+      document.addEventListener('visibilitychange', schedule);
+      new MutationObserver(() => { schedule(); if (about.classList.contains('active')) countUp(); })
+        .observe(about, { attributes: true, attributeFilter: ['class'] });
+
+      // Scroll reveal: IntersectionObserver, with an immediate fallback.
+      const srEls = [...document.querySelectorAll('#about .sr')];
+      if ('IntersectionObserver' in window && !reduced.matches) {
+        const io = new IntersectionObserver((entries) => entries.forEach(e => {
+          if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+        }), { threshold: 0.15 });
+        srEls.forEach((el, i) => { el.style.transitionDelay = (i % 5) * 50 + 'ms'; io.observe(el); });
+      } else srEls.forEach(el => el.classList.add('in'));
+
+      // Count-up for the numeric metrics, once per visit to the page.
+      let counted = false;
+      function countUp() {
+        if (counted || reduced.matches) return;
+        counted = true;
+        document.querySelectorAll('#about [data-count]').forEach(el => {
+          const end = +el.dataset.count, dec = +(el.dataset.decimals || 0), suf = el.dataset.suffix || '';
+          const t0 = performance.now();
+          (function frame(now) {
+            const k = Math.min(1, (now - t0) / 1200), eased = 1 - Math.pow(1 - k, 3);
+            el.textContent = (end * eased).toFixed(dec) + suf;
+            if (k < 1) requestAnimationFrame(frame);
+          })(t0);
+        });
+      }
+
+      setPlaying(playing);
+      if (reduced.matches) caption.innerHTML = CAPTIONS[0] + ' Select a step below to move through the process.';
+    })();
+  </script>
+</body>
+</html>

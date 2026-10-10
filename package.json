@@ -1,0 +1,13 @@
+{
+  "name": "eco-station",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "motion": "^14.1.0",
+    "socket.io": "^4.8.3"
+  }
+}

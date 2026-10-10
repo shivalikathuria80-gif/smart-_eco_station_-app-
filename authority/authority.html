@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eco-Station Authority Portal</title>
+  <meta name="robots" content="noindex, nofollow">
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  
+  <!-- FontAwesome & Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', system-ui, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; min-height: 100dvh; display: flex; flex-direction: column;
+      background-image: radial-gradient(circle at 15% -10%, rgba(16,185,129,0.16), transparent 45%); background-attachment: fixed; }
+    button, input { font: inherit; }
+    :focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+
+    .topbar { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+      padding: 0.8rem 1.5rem; min-height: 64px; background: rgba(15,23,42,0.75); backdrop-filter: blur(12px); border-bottom: 1px solid #1e293b; }
+    .brand { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; font-size: 1.05rem; }
+    .brand i { color: #10b981; }
+    .brand span { color: #94a3b8; font-weight: 500; }
+    .top-actions { display: flex; gap: 0.6rem; }
+    .ghost-btn { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; padding: 0 0.95rem; border-radius: 0.9rem; border: 1px solid #334155;
+      background: transparent; color: #cbd5e1; font-size: 0.88rem; font-weight: 500; text-decoration: none; cursor: pointer; transition: background-color .2s, border-color .2s, color .2s; }
+    .ghost-btn:hover { background: #1e293b; color: #f8fafc; }
+    .ghost-btn.danger:hover { border-color: #ef4444; color: #fca5a5; }
+
+    main { flex: 1; width: 100%; max-width: 1100px; margin: 0 auto; padding: 2rem 1rem 3rem; position: relative; }
+    .page-title { font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 300; letter-spacing: -0.04em; line-height: 1.05; text-wrap: balance; }
+    .page-title strong { font-weight: 700; color: #10b981; }
+    .page-sub { color: #94a3b8; margin-top: 0.5rem; line-height: 1.6; max-width: 60ch; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .card { background: rgba(30,41,59,0.6); border: 1px solid #334155; border-radius: 1.25rem; padding: 1.4rem; min-width: 0; }
+    .section-title { font-size: 1.2rem; font-weight: 600; margin-top: 2.5rem; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.6rem; }
+    .section-title i { color: #10b981; }
+    .checker-btn { background: #10b981; color: #0f172a; border: none; min-height: 48px; padding: 0 1.4rem; border-radius: 0.9rem; font-weight: 700; cursor: pointer; transition: background-color .2s, transform .1s; }
+    .checker-btn:hover { background: #34d399; }
+    .checker-btn:active { transform: scale(0.98); }
+    .field-hint { font-size: 0.75rem; color: #94a3b8; margin-top: 0.35rem; line-height: 1.4; }
+    .db-error { color: #fbbf24; font-size: 0.85rem; }
+    code { font-family: ui-monospace, monospace; color: #cbd5e1; }
+
+    /* --- PIN GATE --- */
+    .pin-gate { max-width: 440px; margin: clamp(2rem, 10vh, 6rem) auto 0; text-align: center; }
+    .pin-gate .icon-circle { width: 60px; height: 60px; border-radius: 1.1rem; display: grid; place-items: center; margin: 0 auto 1.4rem;
+      font-size: 1.4rem; color: #10b981; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); }
+    .pin-gate .page-title { font-size: clamp(1.9rem, 4vw, 2.4rem); }
+    .pin-gate .page-sub { margin: 0.6rem auto 2rem; }
+    .pin-label { display: block; font-size: 0.85rem; color: #94a3b8; font-weight: 500; margin-bottom: 0.7rem; }
+    .pin-digits { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.55rem; max-width: 380px; margin: 0 auto; }
+    .pin-digits input { width: 100%; aspect-ratio: 5 / 6; min-height: 52px; text-align: center; font-size: 1.5rem; font-weight: 600; font-variant-numeric: tabular-nums;
+      color: #f8fafc; caret-color: #10b981; background: rgba(248,250,252,0.04); backdrop-filter: blur(6px); border: 1px solid #334155; border-radius: 0.9rem;
+      transition: border-color .2s, background-color .2s; }
+    .pin-digits input:focus { outline: none; border-color: rgba(16,185,129,0.8); background: rgba(16,185,129,0.08); }
+    .pin-digits input:disabled { opacity: 0.6; }
+    .pin-digits .gap { display: none; }
+    .pin-digits.shake { animation: shake .4s cubic-bezier(.36,.07,.19,.97); }
+    .pin-digits.shake input { border-color: #ef4444; }
+    @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+    .pin-error { color: #fca5a5; font-size: 0.88rem; margin-top: 1rem; min-height: 1.4em; }
+    .pin-note { color: #64748b; font-size: 0.8rem; margin-top: 2rem; }
+
+    .authority-header { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
+
+    .authority-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; }
+    .lock-btn {
+      background: none; border: 1px solid #334155; color: #94a3b8; padding: 0.5rem 0.9rem;
+      border-radius: 0.5rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    }
+    .lock-btn:hover { border-color: #ef4444; color: #f87171; }
+
+    .admin-form-card h3 { font-size: 1rem; margin-bottom: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
+    .admin-form-card .field { margin-bottom: 0.9rem; text-align: left; }
+    .admin-form-card label { display: block; font-size: 0.78rem; color: #94a3b8; margin-bottom: 0.35rem; font-weight: 600; }
+    .admin-form-card input {
+      width: 100%; padding: 0.65rem 0.85rem; background: #0f172a; border: 1px solid #334155;
+      border-radius: 0.5rem; color: #f8fafc; font-size: 0.9rem;
+    }
+    .admin-form-card input:focus { outline: none; border-color: #38bdf8; }
+    .admin-form-card button { width: 100%; margin-top: 0.2rem; }
+    .admin-form-result { margin-top: 0.8rem; font-size: 0.83rem; padding: 0.6rem 0.8rem; border-radius: 0.5rem; display: none; }
+    .admin-form-result.success { display: block; background: #10b98122; color: #34d399; border: 1px solid #10b98155; }
+    .admin-form-result.error { display: block; background: #ef444422; color: #f87171; border: 1px solid #ef444455; }
+
+    .alert-banner {
+      background: #ef444422; border: 1px solid #ef444455; border-radius: 0.75rem; padding: 1rem 1.2rem;
+      margin-top: 1.5rem; display: none; align-items: flex-start; gap: 0.7rem;
+    }
+    .alert-banner.show { display: flex; }
+    .alert-banner i { color: #f87171; margin-top: 0.15rem; }
+    .alert-banner strong { color: #f87171; display: block; margin-bottom: 0.3rem; }
+    .alert-banner p { color: #fca5a5; font-size: 0.83rem; font-family: monospace; margin-top: 0.15rem; }
+
+    .bin-card .bin-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .bin-card .bin-id { font-weight: 700; }
+    .bin-card .bin-zone { color: #64748b; font-size: 0.78rem; }
+    .status-pill { font-size: 0.72rem; font-weight: 700; padding: 0.25rem 0.7rem; border-radius: 20px; border: 1px solid; }
+    .status-pill.normal { color: #34d399; background: #10b98118; border-color: #10b98155; }
+    .status-pill.warning { color: #fbbf24; background: #f59e0b18; border-color: #f59e0b55; }
+    .status-pill.critical { color: #f87171; background: #ef444418; border-color: #ef444455; }
+    .fill-row { margin-bottom: 0.7rem; }
+    .fill-row .fill-label { display: flex; justify-content: space-between; font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.3rem; }
+    .fill-track { height: 7px; background: #33415580; border-radius: 20px; overflow: hidden; }
+    .fill-bar { height: 100%; border-radius: 20px; background: #38bdf8; transition: width 0.5s; }
+    .fill-bar.warning { background: #f59e0b; }
+    .fill-bar.critical { background: #ef4444; }
+
+    .log-feed { max-height: 320px; overflow-y: auto; }
+    .log-entry { display: flex; gap: 0.6rem; font-size: 0.83rem; padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry .log-time { color: #64748b; font-family: monospace; font-size: 0.75rem; white-space: nowrap; }
+    .log-entry.type-alert i { color: #f87171; }
+    .log-entry.type-scan i { color: #38bdf8; }
+    .log-entry.type-reward i { color: #34d399; }
+
+    /* --- AUTHORITY PORTAL LOADER (spinning ring -> closes -> tick) --- */
+    #authority { position: relative; }
+    .portal-loader { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; align-content: center; gap: 1rem; min-height: 360px;
+      background: rgba(15,23,42,0.88); backdrop-filter: blur(8px); border-radius: 1.5rem; transition: opacity .35s ease; }
+    .portal-loader[hidden] { display: none; }
+    .portal-loader.fade { opacity: 0; }
+    .pl-svg { width: 84px; height: 84px; }
+    .pl-track { fill: none; stroke: #334155; stroke-width: 5; }
+    .pl-ring { fill: none; stroke: #10b981; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 60 164; transform-origin: 50% 50%; animation: pl-spin .9s linear infinite; }
+    .pl-check { fill: none; stroke: #10b981; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 48; stroke-dashoffset: 48; }
+    .pl-cross { fill: none; stroke: #ef4444; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 29; stroke-dashoffset: 29; }
+    .portal-loader.done .pl-ring { animation: none; stroke-dasharray: 224 0; transition: stroke-dasharray .35s ease-out; }
+    .portal-loader.done .pl-check { stroke-dashoffset: 0; transition: stroke-dashoffset .4s .3s ease-out; }
+    .portal-loader.fail .pl-ring { animation: none; stroke: #ef4444; stroke-dasharray: 224 0; transition: stroke-dasharray .35s ease-out; }
+    .portal-loader.fail .pl-cross { stroke-dashoffset: 0; transition: stroke-dashoffset .3s .3s ease-out; }
+    .pl-text { color: #cbd5e1; font-size: 0.95rem; text-align: center; }
+    @keyframes pl-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .pl-ring { animation: none; }
+      .portal-loader, .portal-loader * { transition: none !important; }
+    }
+
+
+    .alert-banner { border-radius: 1.25rem; }
+    .admin-form-card input { min-height: 46px; border-radius: 0.9rem; background: rgba(248,250,252,0.04); font-size: 1rem; }
+    .admin-form-card input:focus { border-color: rgba(16,185,129,0.8); }
+    .admin-form-card label { font-size: 0.82rem; }
+    .admin-form-result { border-radius: 0.9rem; }
+    .portal-loader { inset: 0 0 auto 0; min-height: 60vh; }
+
+    @media (max-width: 480px) {
+      .topbar { padding: 0.7rem 1rem; }
+      .top-actions .ghost-btn span { display: none; }
+      .pin-digits { gap: 0.4rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pin-digits.shake { animation: none; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Authority Portal <span>Eco-Station</span></div>
+    <div class="top-actions">
+      <a class="ghost-btn" href="../smart eco station.html"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i> <span>Public site</span></a>
+      <button type="button" class="ghost-btn danger" id="lockBtn" hidden onclick="lockPortal()"><i class="fa-solid fa-lock" aria-hidden="true"></i> <span>Lock</span></button>
+    </div>
+  </header>
+
+  <main>
+    <section id="pinGate" class="pin-gate" aria-labelledby="gateTitle">
+      <div class="icon-circle" aria-hidden="true"><i class="fa-solid fa-key"></i></div>
+      <h1 class="page-title" id="gateTitle">Authority <strong>access</strong></h1>
+      <p class="page-sub">Restricted to municipal staff. Enter the 6-digit PIN to manage cards and stations.</p>
+      <span class="pin-label" id="pinLabel">Access PIN</span>
+      <div class="pin-digits" id="pinDigits" role="group" aria-labelledby="pinLabel">
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" aria-label="Digit 1">
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="Digit 2">
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="Digit 3">
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="Digit 4">
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="Digit 5">
+        <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" aria-label="Digit 6">
+      </div>
+      <p class="pin-error" id="pinError" role="alert"></p>
+      <p class="pin-note">Lost the PIN? Ask the station administrator.</p>
+    </section>
+
+      <div class="portal-loader" id="portalLoader" hidden role="status" aria-live="polite">
+        <svg class="pl-svg" viewBox="0 0 84 84" aria-hidden="true">
+          <circle class="pl-track" cx="42" cy="42" r="35.6"/>
+          <circle class="pl-ring" cx="42" cy="42" r="35.6"/>
+          <path class="pl-check" d="M27 43 l10 10 l20 -21"/>
+          <path class="pl-cross" d="M32 32 l20 20"/>
+          <path class="pl-cross" d="M52 32 l-20 20"/>
+        </svg>
+        <p class="pl-text" id="portalLoaderText">Loading portal data…</p>
+      </div>
+
+      <div id="authorityDashboard" style="display:none;">
+        <div class="authority-header">
+          <div>
+            <h1 class="page-title">Station <strong>control</strong></h1>
+            <p class="page-sub">Manage cards and monitor the bins reporting to Firebase.</p>
+          </div>
+        </div>
+
+        <div id="alertBanner" class="alert-banner">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <div>
+            <strong id="alertTitle">CRITICAL ALERT</strong>
+            <div id="alertBody"></div>
+          </div>
+        </div>
+
+        <!-- Card management -->
+        <h3 class="section-title" style="margin-top:2rem;"><i class="fa-solid fa-id-card"></i> Card Management</h3>
+        <div class="grid">
+          <div class="card admin-form-card">
+            <h3><i class="fa-solid fa-user-plus" style="color:#38bdf8;"></i> Register New Card</h3>
+            <div class="field"><label>Card UID</label><input type="text" id="regUid" placeholder="e.g. 55 66 77 88"><div class="field-hint">Copy it from the station's LCD ("ACCESS DENIED" screen) or Serial Monitor.</div></div>
+            <div class="field"><label>Account Holder Name</label><input type="text" id="regName" placeholder="e.g. Aarav Mehta"></div>
+            <button class="checker-btn" onclick="registerCard()">Register Card</button>
+            <div class="admin-form-result" id="regResult"></div>
+          </div>
+
+          <div class="card admin-form-card">
+            <h3><i class="fa-solid fa-star" style="color:#f59e0b;"></i> Manually Adjust Points</h3>
+            <div class="field"><label>Card UID</label><input type="text" id="adjUid" placeholder="e.g. A3 5F 8C 12"></div>
+            <div class="field"><label>Points (use negative to deduct)</label><input type="number" id="adjPoints" placeholder="e.g. 50"></div>
+            <button class="checker-btn" onclick="adjustPoints()">Apply Adjustment</button>
+            <div class="admin-form-result" id="adjResult"></div>
+          </div>
+        </div>
+
+        <!-- Bin monitoring -->
+        <h3 class="section-title"><i class="fa-solid fa-boxes-stacked"></i> Station Bin Monitoring</h3>
+        <p style="color:#64748b; font-size:0.85rem; margin-top:-0.6rem;">Populated once an ESP32-CAM station writes fill data to <code>/bins</code> in Firebase.</p>
+        <div class="grid" id="binContainer">
+          <p style="color:#64748b;">No stations connected yet.</p>
+        </div>
+
+        <!-- Live log -->
+        <h3 class="section-title"><i class="fa-solid fa-list"></i> Live Event Log</h3>
+        <div class="card">
+          <div class="log-feed" id="logFeed">
+            <p style="color:#64748b; font-size:0.85rem;">No events yet. Scans, alerts, and manual adjustments will appear here.</p>
+          </div>
+        </div>
+      </div>
+  </main>
+
+  <script>
+    // --- 2. FIREBASE REALTIME DATABASE CONFIGURATION ---
+    // Expected data shape (this is what the ESP32 should write to):
+    //   /users/{cardUID}/name    -> string
+    //   /users/{cardUID}/points  -> number (ESP32 increments this on every valid scan)
+    const firebaseConfig = {
+      apiKey: "AIzaSyCkHmvYQDjLInM7oWkK_bgU8j1hvPreyjk",
+      authDomain: "smart-eco-station.firebaseapp.com",
+      databaseURL: "https://smart-eco-station-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "smart-eco-station",
+      storageBucket: "smart-eco-station.firebasestorage.app",
+      messagingSenderId: "407471389746",
+      appId: "1:407471389746:web:e123ae86371925f42f902b"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    const POINTS_PER_ITEM = 10;   // must match POINTS_PER_ITEM in EcoStation_Main.ino
+
+    // Escape anything typed by users before putting it into innerHTML
+    function esc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // RFID UIDs are 4, 7 or 10 hex bytes: "A3 5F 8C 12". Also accepts "a35f8c12".
+    function normalizeUid(raw) {
+      const hex = String(raw).toUpperCase().replace(/[^0-9A-F]/g, '');
+      if (![8, 14, 20].includes(hex.length)) return null;
+      return hex.match(/../g).join(' ');
+    }
+
+    function dbErrorHtml(err) {
+      const denied = /permission/i.test(err && err.message);
+      return `<p class="db-error"><i class="fa-solid fa-triangle-exclamation"></i> ${denied
+        ? 'Firebase denied access to this data. Check your Realtime Database rules.'
+        : 'Could not load data: ' + esc(err && err.message)}</p>`;
+    }
+
+    // --- 5. AUTHORITY PORTAL ---
+    // The PIN is checked in the browser, so this gate only keeps casual visitors out.
+    // Only its SHA-256 hash is stored here, but a 6-digit PIN can still be brute-forced offline:
+    // real write protection must come from the Firebase Database Rules.
+    const PIN_HASH = '75d88ce7ba879d5d954e2343d2d329f0c3c0bd95310a1914592521c943445a8f';
+    const MAX_TRIES = 5, LOCKOUT_MS = 30000;
+    let authorityUnlocked = false;
+    let firebaseListenersAttached = false;
+    let failedTries = 0, lockedUntil = 0;
+
+    const pinDigits = Array.from(document.querySelectorAll('#pinDigits input'));
+    const pinError = document.getElementById('pinError');
+    const pinBox = document.getElementById('pinDigits');
+
+    async function sha256(text) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+      return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function fillFrom(index, text) {
+      const digits = text.replace(/\D/g, '').split('');
+      digits.forEach((d, k) => { if (pinDigits[index + k]) pinDigits[index + k].value = d; });
+      const next = pinDigits.find(d => !d.value);
+      (next || pinDigits[pinDigits.length - 1]).focus();
+      if (pinDigits.every(d => d.value)) submitPin();
+    }
+
+    pinDigits.forEach((input, i) => {
+      input.addEventListener('input', () => {
+        pinError.textContent = '';
+        pinBox.classList.remove('shake');
+        const v = input.value;
+        input.value = '';
+        if (v) fillFrom(i, v); // handles typing and phone autofill of several digits at once
+      });
+      input.addEventListener('paste', (e) => { e.preventDefault(); fillFrom(0, e.clipboardData.getData('text')); });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !input.value && i > 0) { pinDigits[i - 1].value = ''; pinDigits[i - 1].focus(); }
+        if (e.key === 'ArrowLeft' && i > 0) pinDigits[i - 1].focus();
+        if (e.key === 'ArrowRight' && i < pinDigits.length - 1) pinDigits[i + 1].focus();
+      });
+    });
+
+    function clearPin() { pinDigits.forEach(d => d.value = ''); pinDigits[0].focus(); }
+
+    async function submitPin() {
+      if (Date.now() < lockedUntil) {
+        pinError.textContent = `Too many attempts. Try again in ${Math.ceil((lockedUntil - Date.now()) / 1000)}s.`;
+        return clearPin();
+      }
+      const entered = pinDigits.map(d => d.value).join('');
+      pinDigits.forEach(d => d.disabled = true);
+      let ok = false;
+      try { ok = (await sha256(entered)) === PIN_HASH; }
+      catch (_) { pinError.textContent = 'This browser cannot check the PIN here. Open the portal over https or localhost.'; }
+      pinDigits.forEach(d => d.disabled = false);
+      if (ok) {
+        failedTries = 0;
+        try { sessionStorage.setItem('ecoPortalUnlocked', '1'); } catch (_) {}
+        return unlockPortal();
+      }
+      if (pinError.textContent) return clearPin();
+      failedTries++;
+      if (failedTries >= MAX_TRIES) {
+        failedTries = 0;
+        lockedUntil = Date.now() + LOCKOUT_MS;
+        pinError.textContent = 'Too many attempts. Try again in 30s.';
+      } else {
+        pinError.textContent = `Incorrect PIN. ${MAX_TRIES - failedTries} ${MAX_TRIES - failedTries === 1 ? 'try' : 'tries'} left.`;
+      }
+      pinBox.classList.add('shake');
+      setTimeout(() => pinBox.classList.remove('shake'), 400);
+      clearPin();
+    }
+
+    function unlockPortal() {
+      authorityUnlocked = true;
+      document.getElementById('pinGate').hidden = true;
+      document.getElementById('lockBtn').hidden = false;
+      document.getElementById('authorityDashboard').style.display = 'block';
+      if (!firebaseListenersAttached) {
+        attachAuthorityListeners();
+        firebaseListenersAttached = true;
+      }
+      showPortalLoader();
+    }
+
+    // Covers the portal until /bins and /logs have answered once, then turns the ring into a tick (or a cross on failure).
+    let loaderRun = 0;
+    function showPortalLoader() {
+      const el = document.getElementById('portalLoader');
+      const text = document.getElementById('portalLoaderText');
+      const run = ++loaderRun;
+      el.className = 'portal-loader';
+      el.hidden = false;
+      text.textContent = 'Loading portal data…';
+      const minShow = new Promise(r => setTimeout(r, 700)); // avoid a flash when data is cached
+      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000));
+      const data = Promise.all([database.ref('bins').once('value'), database.ref('logs').limitToLast(1).once('value')]);
+      Promise.all([Promise.race([data, timeout]), minShow]).then(() => {
+        if (run !== loaderRun) return;
+        el.classList.add('done');
+        text.textContent = 'Portal ready';
+        setTimeout(() => { if (run === loaderRun) hidePortalLoader(); }, 1000);
+      }, (err) => {
+        if (run !== loaderRun) return;
+        el.classList.add('fail');
+        text.textContent = /permission/i.test(err.message) ? 'Sign in on the Sign In tab to view portal data.' : 'Could not reach the database. Check your connection.';
+        setTimeout(() => { if (run === loaderRun) hidePortalLoader(); }, 2600);
+      });
+    }
+    function hidePortalLoader() {
+      const el = document.getElementById('portalLoader');
+      el.classList.add('fade');
+      setTimeout(() => { el.hidden = true; }, 350);
+    }
+
+    function lockPortal() {
+      authorityUnlocked = false;
+      loaderRun++;
+      try { sessionStorage.removeItem('ecoPortalUnlocked'); } catch (_) {}
+      document.getElementById('portalLoader').hidden = true;
+      document.getElementById('authorityDashboard').style.display = 'none';
+      document.getElementById('lockBtn').hidden = true;
+      document.getElementById('pinGate').hidden = false;
+      pinError.textContent = '';
+      clearPin();
+    }
+
+    function showFormResult(el, type, msg) {
+      el.className = 'admin-form-result ' + type;
+      el.textContent = msg;
+    }
+
+    // Register a brand-new card: /users/{uid} = { name, points: 0 }
+    function registerCard() {
+      const rawUid = document.getElementById('regUid').value.trim();
+      const uid = normalizeUid(rawUid);
+      const name = document.getElementById('regName').value.trim();
+      const resultBox = document.getElementById('regResult');
+
+      if (!rawUid || !name) return showFormResult(resultBox, 'error', 'Card UID and name are required.');
+      if (!uid) return showFormResult(resultBox, 'error', 'That is not a valid card UID. It should look like A3 5F 8C 12.');
+      if (name.length > 40) return showFormResult(resultBox, 'error', 'Name must be 40 characters or less.');
+
+      database.ref('users/' + uid).once('value').then((snap) => {
+        if (snap.exists()) {
+          showFormResult(resultBox, 'error', 'That card UID is already registered.');
+          return;
+        }
+        return database.ref('users/' + uid).set({ name, points: 0 }).then(() => {
+          pushLog('scan', `New card registered for ${name} (${uid})`);
+          showFormResult(resultBox, 'success', `Card registered for ${name}.`);
+          document.getElementById('regUid').value = '';
+          document.getElementById('regName').value = '';
+        });
+      }).catch((err) => {
+        showFormResult(resultBox, 'error', 'Write failed: ' + err.message);
+      });
+    }
+
+    // Manually adjust a card's points (admin override on top of ESP32 auto-scoring)
+    function adjustPoints() {
+      const uid = normalizeUid(document.getElementById('adjUid').value);
+      const delta = Number(document.getElementById('adjPoints').value);
+      const resultBox = document.getElementById('adjResult');
+
+      if (!uid || !Number.isInteger(delta) || !delta) return showFormResult(resultBox, 'error', 'A valid card UID and a non-zero whole number of points are required.');
+
+      // Only adjust registered cards, otherwise the transaction would create
+      // a nameless "ghost" user. Balances never go below 0.
+      database.ref('users/' + uid + '/name').once('value').then((nameSnap) => {
+        if (!nameSnap.exists()) {
+          showFormResult(resultBox, 'error', 'Card UID not found. Register it first.');
+          return null;
+        }
+        return database.ref('users/' + uid + '/points').transaction((current) => Math.max(0, (current || 0) + delta));
+      }).then((res) => {
+        if (!res) return;
+        if (!res.committed) {
+          showFormResult(resultBox, 'error', 'Update was not saved. Try again.');
+          return;
+        }
+        database.ref('users/' + uid + '/name').once('value').then((nameSnap) => {
+          const name = nameSnap.val() || uid;
+          pushLog('reward', `${name} adjusted ${delta > 0 ? '+' : ''}${delta} points (manual)`);
+        });
+        showFormResult(resultBox, 'success', `New balance: ${res.snapshot.val()} points.`);
+        document.getElementById('adjUid').value = '';
+        document.getElementById('adjPoints').value = '';
+      }).catch((err) => {
+        showFormResult(resultBox, 'error', 'Update failed: ' + err.message);
+      });
+    }
+
+    // Push a log entry other admins/dashboards can see under /logs
+    function pushLog(type, text) {
+      database.ref('logs').push({
+        type, text, time: new Date().toLocaleTimeString('en-IN')
+      });
+    }
+
+    function binStatus(columns) {
+      const vals = Object.values(columns || {});
+      if (!vals.length) return 'normal';
+      const max = Math.max(...vals);
+      if (max >= 95) return 'critical';
+      if (max >= 75) return 'warning';
+      return 'normal';
+    }
+
+    function attachAuthorityListeners() {
+      // /bins/{binId} = { zone, columns: { dry, wet } }
+      // Written directly by an ESP32-CAM station once real hardware is deployed.
+      database.ref('bins').on('value', (snapshot) => {
+        const binContainer = document.getElementById('binContainer');
+        const alertBanner = document.getElementById('alertBanner');
+        const alertBody = document.getElementById('alertBody');
+        const data = snapshot.val();
+
+        if (!data) {
+          binContainer.innerHTML = '<p style="color:#64748b;">No stations connected yet.</p>';
+          alertBanner.classList.remove('show');
+          return;
+        }
+
+        binContainer.innerHTML = '';
+        const criticalLines = [];
+
+        Object.entries(data).forEach(([binId, bin]) => {
+          const status = binStatus(bin.columns);
+          if (status === 'critical') {
+            Object.entries(bin.columns).forEach(([col, val]) => {
+              if (val >= 95) criticalLines.push(`${binId}: ${col.charAt(0).toUpperCase() + col.slice(1)} column FULL.`);
+            });
+          }
+
+          const rows = Object.entries(bin.columns || {}).map(([col, val]) => {
+            const rowStatus = val >= 95 ? 'critical' : val >= 75 ? 'warning' : '';
+            return `
+              <div class="fill-row">
+                <div class="fill-label"><span>${esc(col.charAt(0).toUpperCase() + col.slice(1))}</span><span>${Number(val) || 0}%</span></div>
+                <div class="fill-track"><div class="fill-bar ${rowStatus}" style="width:${Math.min(100, Math.max(0, Number(val) || 0))}%"></div></div>
+              </div>`;
+          }).join('');
+
+          binContainer.innerHTML += `
+            <div class="card bin-card">
+              <div class="bin-head">
+                <div><div class="bin-id">${esc(binId)}</div><div class="bin-zone"><i class="fa-solid fa-location-dot"></i> ${esc(bin.zone || 'Unassigned')}</div></div>
+                <span class="status-pill ${status}">${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+              </div>
+              ${rows}
+              ${bin.updated ? `<div class="bin-updated"><i class="fa-regular fa-clock"></i> Last report: ${esc(bin.updated)}</div>` : ''}
+            </div>`;
+        });
+
+        if (criticalLines.length) {
+          alertBody.innerHTML = criticalLines.map(l => `<p>${esc(l)}</p>`).join('');
+          alertBanner.classList.add('show');
+        } else {
+          alertBanner.classList.remove('show');
+        }
+      }, (err) => {
+        document.getElementById('binContainer').innerHTML = dbErrorHtml(err);
+      });
+
+      // /logs — newest 20 events, shown newest-first
+      database.ref('logs').limitToLast(20).on('value', (snapshot) => {
+        const logFeed = document.getElementById('logFeed');
+        const data = snapshot.val();
+        if (!data) {
+          logFeed.innerHTML = '<p style="color:#64748b; font-size:0.85rem;">No events yet. Scans, alerts, and manual adjustments will appear here.</p>';
+          return;
+        }
+        const iconMap = { alert: 'fa-triangle-exclamation', scan: 'fa-id-card', reward: 'fa-star' };
+        const entries = Object.values(data).reverse();
+        logFeed.innerHTML = entries.map(l => `
+          <div class="log-entry type-${esc(l.type || 'scan')}">
+            <i class="fa-solid ${iconMap[l.type] || 'fa-circle-info'}"></i>
+            <span class="log-time">${esc(l.time)}</span>
+            <span>${esc(l.text)}</span>
+          </div>`).join('');
+      }, (err) => {
+        document.getElementById('logFeed').innerHTML = dbErrorHtml(err);
+      });
+    }
+
+    // Stay unlocked across refreshes in this tab only.
+    try { if (sessionStorage.getItem('ecoPortalUnlocked') === '1') unlockPortal(); } catch (_) {}
+    if (!authorityUnlocked) pinDigits[0].focus();
+  </script>
+</body>
+</html>
