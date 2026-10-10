@@ -1,6 +1,6 @@
 {
   "framework": null,
-  "buildCommand": "",
+  "buildCommand": "rm -rf authority",
   "installCommand": "",
   "outputDirectory": ".",
   "rewrites": [
