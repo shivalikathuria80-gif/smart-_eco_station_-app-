@@ -7,3 +7,5 @@ smart eco station.pre-*.html
 # personal screenshots, not part of the app
 WhatsApp Image *.jpeg
 .claude/
+
+.vercel
