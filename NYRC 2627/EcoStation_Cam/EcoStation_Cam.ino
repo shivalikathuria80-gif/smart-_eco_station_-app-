@@ -16,7 +16,7 @@
  * ============================================================================
  */
 
-#include <Wet_Dry_Waste_inferencing.h>        // <-- your Edge Impulse library
+#include <shivali-project-2_inferencing.h>    // Edge Impulse library (wet / dry, 96x96 RGB)
 #include "edge-impulse-sdk/dsp/image/image.hpp"
 #include "esp_camera.h"
 
