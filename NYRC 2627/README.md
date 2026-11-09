@@ -5,7 +5,7 @@ Two sketches that talk to the same Firebase database as the website
 
 | Folder | Board | Job |
 |---|---|---|
-| `EcoStation_Main/` | ESP32 DevKit | RFID, solenoid lock, servo, 2× ultrasonic, LCD, Wi-Fi → Firebase |
+| `EcoStation_Main/` | ESP32 DevKit | RFID, servo, 2× ultrasonic, LCD, Wi-Fi → Firebase |
 | `EcoStation_Cam/`  | ESP32-CAM (AI-Thinker) | **Option A:** classifies wet/dry on the CAM (Edge Impulse model) |
 | `EcoStation_Cam_Server/` | ESP32-CAM (AI-Thinker) | **Option B:** sends photo to `ClassifierServer`, relays WET/DRY |
 | `ClassifierServer/` | PC / Raspberry Pi | Flask server running a Teachable Machine model (`python app.py`) |
@@ -24,7 +24,6 @@ stay on and on the same Wi-Fi as the station.
 | RC522 RFID (3.3 V!) | SDA/SS · SCK · MOSI · MISO · RST | 5 · 18 · 23 · 19 · 27 |
 | I2C LCD 16×2 | SDA · SCL | 21 · 22 |
 | Servo MG996R (signal) | SIG | 13 (power from separate 5 V supply, common GND) |
-| Solenoid lock | via relay/MOSFET IN | 26 (lock on 12 V supply + flyback diode) |
 | Buzzer | + | 4 |
 | Ultrasonic – WET bin | TRIG · ECHO | 32 · 33 |
 | Ultrasonic – DRY bin | TRIG · ECHO | 25 · 14 |

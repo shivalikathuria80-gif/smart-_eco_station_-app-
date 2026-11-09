@@ -4,8 +4,8 @@
  * ============================================================================
  *  Flow:
  *    1. User taps RFID card (RC522)          -> checked against Firebase /users
- *    2. Valid card -> solenoid lock opens    -> user drops waste on the flap
- *    3. Main ESP32 asks ESP32-CAM (UART)     -> "WET" or "DRY"
+ *    2. Valid card -> camera feed opens      -> LCD asks user to put waste in
+ *    3. User puts waste on the flap          -> ESP32-CAM (UART) says "WET" or "DRY"
  *    4. Servo tilts flap into the right bin  -> user gets reward points
  *    5. Two ultrasonic sensors measure fill  -> LCD + Firebase /bins (portal)
  *
@@ -58,7 +58,7 @@ const int SERVO_WET    = 30;
 const int SERVO_DRY    = 150;
 
 // Timings (ms)
-const unsigned long LOCK_OPEN_TIME   = 5000;   // time lid stays unlocked
+const unsigned long DEPOSIT_TIME     = 5000;   // time the user gets to put waste on the flap
 const unsigned long ITEM_SETTLE_TIME = 1500;   // wait for item to rest on flap
 const unsigned long CAM_TIMEOUT      = 8000;
 const unsigned long BIN_UPLOAD_EVERY = 15000;
@@ -70,7 +70,6 @@ const unsigned long WIFI_RETRY_EVERY = 10000;
 #define RFID_RST_PIN   27
 // I2C LCD: SDA 21, SCL 22
 #define LCD_ADDR       0x27      // try 0x3F if screen stays blank
-#define SOLENOID_PIN   26        // -> relay / MOSFET IN (NOT directly to lock!)
 #define SERVO_PIN      13
 #define BUZZER_PIN     4
 // Ultrasonic HC-SR04 (ECHO is 5V -> use a 1k/2k voltage divider)
@@ -81,9 +80,6 @@ const unsigned long WIFI_RETRY_EVERY = 10000;
 // UART to ESP32-CAM
 #define CAM_RX_PIN     16        // <- CAM U0T (GPIO1)
 #define CAM_TX_PIN     17        // -> CAM U0R (GPIO3)
-
-#define SOLENOID_ON    HIGH      // flip if your relay module is active-LOW
-#define SOLENOID_OFF   LOW
 
 // ---------------------------------------------------------------- OBJECTS --
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
@@ -278,7 +274,6 @@ void setup() {
   Serial.begin(115200);
   CamSerial.begin(115200, SERIAL_8N1, CAM_RX_PIN, CAM_TX_PIN);
 
-  pinMode(SOLENOID_PIN, OUTPUT); digitalWrite(SOLENOID_PIN, SOLENOID_OFF);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(WET_TRIG_PIN, OUTPUT); pinMode(WET_ECHO_PIN, INPUT);
   pinMode(DRY_TRIG_PIN, OUTPUT); pinMode(DRY_ECHO_PIN, INPUT);
@@ -354,15 +349,16 @@ void loop() {
     return;
   }
 
-  // ---- 2. Unlock
-  lcdShow("Hi " + name, "Lid unlocked!");
+  // ---- 2. Camera feed opens, user puts waste on the flap (no lock)
+  lcdShow("Hi " + name, "Camera on");
   beep(1);
   pushLog("scan", name + " (" + uid + ") scanned at " + STATION_ID);
-  digitalWrite(SOLENOID_PIN, SOLENOID_ON);
-  delay(LOCK_OPEN_TIME);
-  digitalWrite(SOLENOID_PIN, SOLENOID_OFF);   // re-lock (never keep solenoid on long)
+  for (int s = DEPOSIT_TIME / 1000; s > 0; s--) {
+    lcdShow("Put waste on", "the flap... " + String(s) + "s");
+    delay(1000);
+  }
 
-  // ---- 3. Classify
+  // ---- 3. Detect the waste
   lcdShow("Scanning waste", "Please wait...");
   delay(ITEM_SETTLE_TIME);
   String type = classifyWaste();

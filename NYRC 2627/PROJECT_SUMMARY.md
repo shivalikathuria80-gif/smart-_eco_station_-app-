@@ -1,7 +1,7 @@
 # Smart Eco Station: Project Summary
 
 ## 1. The idea in one line
-A smart dustbin station that **unlocks with an RFID card**, **uses AI to recognise wet or dry waste**, **sorts it automatically into the right bin**, **gives the user reward points**, and **tells the authorities on a website when a bin is getting full**.
+A smart dustbin station that **starts with an RFID card tap**, **uses AI to recognise wet or dry waste**, **sorts it automatically into the right bin**, **gives the user reward points**, and **tells the authorities on a website when a bin is getting full**.
 
 ## 2. The parts and what each one does
 
@@ -9,7 +9,6 @@ A smart dustbin station that **unlocks with an RFID card**, **uses AI to recogni
 |---|---|
 | **RFID reader (RC522) + card** | Identifies the person using the station |
 | **Main ESP32** | The "brain": controls everything and connects to the internet over Wi-Fi |
-| **Solenoid lock** (through a relay) | Keeps the lid locked until a registered card is scanned |
 | **ESP32-CAM** | Takes a photo of the waste |
 | **Laptop running `app.py`** | Runs the Teachable Machine AI model that decides wet or dry |
 | **Servo motor (MG996R)** | Tilts the flap to drop the waste into the wet or dry bin |
@@ -25,10 +24,10 @@ A smart dustbin station that **unlocks with an RFID card**, **uses AI to recogni
 - The person taps their RFID card. The RC522 reads the card's unique number (UID), e.g. `A3 5F 8C 12`.
 - The main ESP32 asks Firebase over Wi-Fi: "Is there a user saved under this card number?"
 - **Not registered:** the LCD shows **ACCESS DENIED**, the buzzer beeps 3 times, and a "denied" entry goes to the website's log.
-- **Registered:** the LCD shows **"Hi <name>, Lid unlocked!"**
+- **Registered:** the LCD shows **"Hi <name>, Camera on"**
 
-### Step 2: unlocking the lid
-- The ESP32 switches the relay on and the solenoid lock opens for **5 seconds**, then locks again.
+### Step 2: camera feed opens, waste goes in
+- There is no lock. The LCD counts down **5 seconds** ("Put waste on the flap...").
 - The person puts their waste on the flap inside.
 
 ### Step 3: recognising the waste
@@ -86,9 +85,9 @@ The ESP32 and the website both read and write the **same Firebase Realtime Datab
 ## 7. The complete flow
 
 ```
-RFID card → Main ESP32 → checks Firebase → registered? → solenoid unlocks
+RFID card → Main ESP32 → checks Firebase → registered? → camera feed opens
                                                         ↓
-             ESP32-CAM takes photo → laptop AI (Teachable Machine) → WET / DRY
+             waste put on flap → ESP32-CAM takes photo → laptop AI (Teachable Machine) → WET / DRY
                                                         ↓
              Servo sorts waste → +10 points in Firebase → LCD shows total
                                                         ↓

@@ -494,11 +494,11 @@
     <!-- PAGE 4: EXPANDED ABOUT PAGE -->
     <div id="about" class="page">
       <h1 class="page-title reveal d1">How the <strong>Eco-Station</strong> works</h1>
-      <p class="page-sub reveal d2">Edge-computing vision, two ESP32 boards, a solenoid lock and real-time cloud sync, working together to sort waste automatically and reward the people who recycle.</p>
+      <p class="page-sub reveal d2">Edge-computing vision, two ESP32 boards, a servo-driven sorting flap and real-time cloud sync, working together to sort waste automatically and reward the people who recycle.</p>
 
       <!-- ANIMATED PIPELINE (synced with the workflow cards below) -->
       <section class="hero-panel about-hero reveal d3" aria-labelledby="flowCaption">
-        <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 300" role="img" aria-label="Animated diagram: an RFID card unlocks the chute, the camera classifies the item, the servo flap routes it to the wet or dry bin, and points sync to the cloud.">
+        <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 300" role="img" aria-label="Animated diagram: an RFID card starts a session, the item goes into the chute, the camera classifies the item, the servo flap routes it to the wet or dry bin, and points sync to the cloud.">
           <!-- wires -->
           <path class="wire" id="w1" d="M120 150 H200"/>
           <path class="wire" id="w2" d="M262 150 H385"/>
@@ -513,11 +513,11 @@
             <text class="lbl" x="80" y="215" text-anchor="middle">RFID tap</text>
           </g>
 
-          <!-- 2 chute + solenoid door -->
+          <!-- 2 chute -->
           <g data-step="2">
             <rect class="node" x="200" y="60" width="62" height="130" rx="14"/>
             <rect class="door" x="204" y="72" width="54" height="8" rx="3" fill="#f59e0b"/>
-            <text class="lbl" x="231" y="215" text-anchor="middle">Chute lock</text>
+            <text class="lbl" x="231" y="215" text-anchor="middle">Chute</text>
           </g>
 
           <!-- 3 camera -->
@@ -569,7 +569,7 @@
       <!-- WORKFLOW STEP-BY-STEP -->
       <h2 class="section-title sr"><i class="fa-solid fa-gears" aria-hidden="true"></i> End-to-end sorting workflow</h2>
       <div class="workflow-steps" id="flowSteps">
-        <button type="button" class="step-card sr" data-goto="1"><div class="step-num">01</div><h4>RFID authentication</h4><p>User scans their RFID tag (RC522 module). The ESP32 verifies the UID and signals the solenoid to unlock the chute door.</p></button>
+        <button type="button" class="step-card sr" data-goto="1"><div class="step-num">01</div><h4>RFID authentication</h4><p>User scans their RFID tag (RC522 module). The ESP32 verifies the UID and opens the camera feed so the user can put their waste in.</p></button>
         <button type="button" class="step-card sr" data-goto="2"><div class="step-num">02</div><h4>Deposition &amp; detection</h4><p>The internal flash LED lights up and the camera node is notified that an item has been deposited.</p></button>
         <button type="button" class="step-card sr" data-goto="3"><div class="step-num">03</div><h4>Vision classification</h4><p>The ESP32-CAM captures the item image and runs object classification to categorize the waste as Dry/Recyclable or Wet/Organic.</p></button>
         <button type="button" class="step-card sr" data-goto="4"><div class="step-num">04</div><h4>Mechanical routing</h4><p>The main ESP32 signals the high-torque servo motor (MG996R) to pivot the diverter flap left or right into the bin.</p></button>
@@ -587,7 +587,7 @@
             By separating heavy visual processing from core mechanical timing, the system achieves maximum stability:
           </p>
           <ul>
-            <li><strong>Master Node (ESP32-DevKit):</strong> Manages RFID reader, LCD I2C, solenoid locking, servo PWM, and Wi-Fi requests.</li>
+            <li><strong>Master Node (ESP32-DevKit):</strong> Manages RFID reader, LCD I2C, servo PWM, and Wi-Fi requests.</li>
             <li><strong>Vision Node (ESP32-CAM):</strong> Handles snapshot capture, LED flash illumination, and UART serial output.</li>
           </ul>
           <div class="tech-pill-list">
@@ -605,11 +605,11 @@
             Built-in hardware and software guardrails prevent users from exploit-farming reward points without proper disposal:
           </p>
           <ul>
-            <li><strong>Physical Lock:</strong> Solenoid remains locked until a valid RFID card is swiped.</li>
+            <li><strong>Card Access:</strong> The station only starts a sorting session after a valid RFID card is swiped.</li>
             <li><strong>Visual Verification:</strong> Camera validates object presence before triggering servo or points payload.</li>
           </ul>
           <div class="tech-pill-list">
-            <span class="tech-pill">12V Solenoid</span>
+            <span class="tech-pill">RFID Access</span>
             <span class="tech-pill">Session Locking</span>
           </div>
         </div>
@@ -1213,7 +1213,7 @@
       document.documentElement.style.setProperty('--step-ms', STEP_MS + 'ms');
 
       const CAPTIONS = [
-        '<strong>1 · RFID tap.</strong> The card is verified and the solenoid unlocks the chute.',
+        '<strong>1 · RFID tap.</strong> The card is verified and the camera feed opens.',
         '<strong>2 · Deposit.</strong> The item drops in and the camera node is woken up.',
         '<strong>3 · Classify.</strong> The ESP32-CAM snaps a photo and decides wet or dry.',
         '<strong>4 · Route.</strong> The MG996R servo tilts the flap and the item falls into its bin.',

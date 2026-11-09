@@ -14,27 +14,22 @@ flash both. The wiring is identical either way.
 ## 1. Power
 
 ```
-12V 2A adapter ──┬──► LM2596 IN+ ─────────────► LM2596 OUT+ (5V)
-                 │                                   │
-                 └──► Relay COM                      ├──► ESP32 DevKit VIN
+12V 2A adapter ────► LM2596 IN+ ─────────────► LM2596 OUT+ (5V)
+                                                     │
+                                                     ├──► ESP32 DevKit VIN
                                                      ├──► ESP32-CAM 5V
-Relay NO ──────► Solenoid +                          ├──► Servo red (5V)
-Solenoid − ────► 12V GND                             ├──► HC-SR04 #1 VCC
-1N4007 diode across solenoid                        ├──► HC-SR04 #2 VCC
-   (stripe on the + side)                            ├──► LCD VCC
-                                                     └──► Relay VCC
+                                                     ├──► Servo red (5V)
+                                                     ├──► HC-SR04 #1 VCC
+                                                     ├──► HC-SR04 #2 VCC
+                                                     └──► LCD VCC
 GND of every module ────► common ground (all GNDs tied together)
 ```
 
 | From | To | Notes |
 |---|---|---|
 | 12V adapter + | LM2596 IN+ | |
-| 12V adapter + | Relay COM | relay switches the solenoid's 12V |
-| 12V adapter − | LM2596 IN−, Solenoid −, common GND | solenoid return goes straight to 12V GND |
-| LM2596 OUT+ | ESP32 DevKit VIN, ESP32-CAM 5V, servo red, both HC-SR04 VCC, LCD VCC, relay VCC | set to **5.0 V** before connecting anything |
-| Relay NO | Solenoid + | never wire the solenoid straight to the ESP32 |
-| Solenoid − | 12V GND | |
-| 1N4007 | across the solenoid | stripe toward Solenoid + |
+| 12V adapter − | LM2596 IN−, common GND | |
+| LM2596 OUT+ | ESP32 DevKit VIN, ESP32-CAM 5V, servo red, both HC-SR04 VCC, LCD VCC | set to **5.0 V** before connecting anything |
 | 1000 µF 16V capacitor | servo red / servo GND | stops brown-outs when the servo moves |
 
 **Before powering up:** turn the LM2596 trim screw until the output reads 5.0 V
@@ -54,7 +49,6 @@ GND of every module ────► common ground (all GNDs tied together)
 | RC522 RFID | 3.3 V | **3V3** (not 5 V) | |
 | LCD 16×2 I2C | SDA | GPIO 21 | I2C, address `0x27` |
 | LCD 16×2 I2C | SCL | GPIO 22 | I2C |
-| Relay module | IN | GPIO 26 | `SOLENOID_PIN` (high-level trigger) |
 | Servo MG996R | Signal (orange) | GPIO 13 | `SERVO_PIN` |
 | Buzzer | + | GPIO 4 | `BUZZER_PIN` |
 | HC-SR04 WET bin | TRIG | GPIO 32 | `WET_TRIG_PIN` |
@@ -63,7 +57,7 @@ GND of every module ────► common ground (all GNDs tied together)
 | HC-SR04 DRY bin | ECHO | GPIO 14 via 1 kΩ / 2 kΩ divider | `DRY_ECHO_PIN` |
 | ESP32-CAM | U0T (GPIO 1) | GPIO 16 (RX2) | `CAM_RX_PIN` |
 | ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) | `CAM_TX_PIN` |
-| Buzzer, relay, LCD, HC-SR04, servo | GND | any GND pin | common ground |
+| Buzzer, LCD, HC-SR04, servo | GND | any GND pin | common ground |
 
 **ECHO voltage divider (both HC-SR04s):** ECHO outputs 5 V, but ESP32 pins
 tolerate 3.3 V.
@@ -121,8 +115,8 @@ the same pins for upload and for the link.
 ## 4. Full signal path for one item
 
 1. User taps RC522 card → main ESP32 checks Firebase `/users`.
-2. Valid card → relay on GPIO 26 → solenoid unlocks for 5 s.
-3. User drops waste on the flap.
+2. Valid card → camera feed opens and the LCD counts down 5 s (`DEPOSIT_TIME`).
+3. User puts waste on the flap. There is no lock (the solenoid was removed).
 4. Main ESP32 sends `CAPTURE` on GPIO 17 → CAM receives on GPIO 1.
 5. CAM flashes the LED, takes a photo, runs the model, and replies on GPIO 3 →
    main receives on GPIO 16 with `RESULT:WET:0.93`, `RESULT:DRY:0.88` or
@@ -141,8 +135,6 @@ the same pins for upload and for the link.
 - [ ] LM2596 output set to **5.0 V** with nothing else connected.
 - [ ] RC522 is on **3V3**, not 5 V.
 - [ ] Both HC-SR04 ECHO lines go through the 1 kΩ / 2 kΩ divider.
-- [ ] Solenoid goes only through the relay, with the 1N4007 across it (stripe on +).
-- [ ] Relay module jumper set to **H** (high-level trigger).
 - [ ] All GNDs are common.
 - [ ] CAM UART wires are **unplugged** while flashing the CAM.
 - [ ] Edge Impulse library `#include` in `EcoStation_Cam.ino` matches the library name.
@@ -162,7 +154,5 @@ the same pins for upload and for the link.
 - **Option A has no `NONE` class.** `EcoStation_Cam.ino` only sends WET or DRY, so
   an empty flap can still earn points. Add an `empty` label to the Edge Impulse
   project and emit `RESULT:NONE` from the CAM sketch.
-- **Relay trigger polarity:** `SOLENOID_ON` is `HIGH`. If the relay is
-  active-low, change it in `EcoStation_Main.ino`.
 - **Camera model is RGB only.** `getData()` packs three bytes per pixel. Keep the
   Edge Impulse impulse on RGB.
