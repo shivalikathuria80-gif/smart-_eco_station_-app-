@@ -35,6 +35,63 @@ GND of every module ────► common ground (all GNDs tied together)
 **Before powering up:** turn the LM2596 trim screw until the output reads 5.0 V
 (the voltmeter version makes this easy).
 
+### 1a. The four LM2596 terminals
+
+The buck converter has four solder points. Each one has exactly one job:
+
+| LM2596 pad | Connect to | What it is |
+|---|---|---|
+| **IN+** | 12 V adapter + (centre pin of the barrel plug) | 12 V in |
+| **IN−** | 12 V adapter − (outer sleeve of the barrel plug) | 0 V in |
+| **OUT+** | the 5 V rail: ESP32 VIN, ESP32-CAM 5V, servo red, both HC-SR04 VCC, LCD VCC | 5 V out |
+| **OUT−** | the common GND bus: GND of every module | 0 V out |
+
+IN− and OUT− are joined on the board, so all grounds end up the same. A
+breadboard's two power rails work well as the 5 V rail and GND bus: OUT+ to the
+red rail, OUT− to the blue rail, and every module's VCC/GND taken from there.
+
+### 1b. Getting the adapter into the LM2596
+
+The adapter ends in a barrel plug, so it can't go straight into the pads.
+
+- **Easiest:** a female DC barrel jack with screw terminals (5.5 × 2.1 mm). Plug the
+  adapter in, then run a wire from the jack's **+** screw to IN+ and from its
+  **−** screw to IN−.
+- **Alternative:** cut the plug off and strip the two wires. The striped or
+  marked wire is usually −, but confirm with a multimeter before connecting.
+
+The LM2596 has **no reverse-polarity protection**. Before touching IN+/IN−,
+plug in the adapter and check with a multimeter that the wire going to IN+ reads
++12 V against the one going to IN−. Then set the output to 5.0 V with nothing
+on OUT+ yet.
+
+---
+
+## 1c. ESP32-CAM-MB programmer: only for uploading
+
+The ESP32-CAM-MB is the small board with a USB port and two buttons that the
+ESP32-CAM plugs into. It is **not** part of the station wiring. It replaces a
+USB-to-serial adapter for uploading code.
+
+| When | Setup |
+|---|---|
+| Uploading code | ESP32-CAM sits on the MB board, USB cable to the laptop. No other wires on the CAM. |
+| Running the station | ESP32-CAM taken **off** the MB board and wired as in section 3: 5V and GND from the LM2596, U0T/U0R to the main ESP32. |
+
+Why it comes off:
+
+- The MB board's USB chip uses the same U0T/U0R pins as the link to the main
+  ESP32, so the two would talk over each other.
+- While seated on the MB board the CAM's pins are covered, so there is nowhere
+  to land the 5V, GND and UART wires.
+- Powering the CAM from USB and from the LM2596 at the same time puts two
+  supplies on one rail. Use one or the other.
+
+**Upload steps:** seat the CAM on the MB board (camera side up), plug in USB,
+select **AI Thinker ESP32-CAM** in the Arduino IDE, and upload. If it fails with
+"waiting for download", hold **IO0** on the MB board, tap **RST**, release IO0,
+and upload again. Afterwards press **RST** to run the sketch.
+
 ---
 
 ## 2. Main ESP32 (EcoStation_Main, ESP32 DevKit V1)
@@ -132,7 +189,9 @@ the same pins for upload and for the link.
 
 ## 5. Checklist before first power-on
 
+- [ ] Adapter polarity checked with a multimeter before connecting to LM2596 IN+/IN−.
 - [ ] LM2596 output set to **5.0 V** with nothing else connected.
+- [ ] ESP32-CAM taken off the MB programmer and wired to the 5 V rail and the main ESP32.
 - [ ] RC522 is on **3V3**, not 5 V.
 - [ ] Both HC-SR04 ECHO lines go through the 1 kΩ / 2 kΩ divider.
 - [ ] All GNDs are common.
