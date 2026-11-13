@@ -5,9 +5,12 @@ Every connection below is taken from the sketches in this repo. Where the code a
 `EcoStation_Main.ino` and `EcoStation_Cam.ino`.
 
 Two ESP32s and one ESP32-CAM run on the same 5 V rail, sharing one ground.
-Flash the ESP32-CAM with **Option A** (`EcoStation_Cam`, Edge Impulse on the CAM)
-or **Option B** (`EcoStation_Cam_Server`, Teachable Machine on a laptop). Do not
-flash both. The wiring is identical either way.
+The ESP32-CAM runs **`EcoStation_Cam`** (Option A): your Edge Impulse model
+(`shivali-project-2`) runs on the camera itself, so no laptop is needed. Section 5a
+shows how to get and install the Edge Impulse library.
+
+`EcoStation_Cam_Server` (Option B, Teachable Machine on a laptop) is kept in the
+repo only as a backup. Do not flash both. The wiring is identical either way.
 
 ---
 
@@ -109,23 +112,30 @@ and upload again. Afterwards press **RST** to run the sketch.
 | Servo MG996R | Signal (orange) | GPIO 13 | `SERVO_PIN` |
 | Buzzer | + | GPIO 4 | `BUZZER_PIN` |
 | HC-SR04 WET bin | TRIG | GPIO 32 | `WET_TRIG_PIN` |
-| HC-SR04 WET bin | ECHO | GPIO 33 via 1 kΩ / 2 kΩ divider | `WET_ECHO_PIN` |
+| HC-SR04 WET bin | ECHO | GPIO 33 via 1 kΩ / 2.2 kΩ divider | `WET_ECHO_PIN` |
 | HC-SR04 DRY bin | TRIG | GPIO 25 | `DRY_TRIG_PIN` |
-| HC-SR04 DRY bin | ECHO | GPIO 14 via 1 kΩ / 2 kΩ divider | `DRY_ECHO_PIN` |
+| HC-SR04 DRY bin | ECHO | GPIO 14 via 1 kΩ / 2.2 kΩ divider | `DRY_ECHO_PIN` |
 | ESP32-CAM | U0T (GPIO 1) | GPIO 16 (RX2) | `CAM_RX_PIN` |
 | ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) | `CAM_TX_PIN` |
 | Buzzer, LCD, HC-SR04, servo | GND | any GND pin | common ground |
 
 **ECHO voltage divider (both HC-SR04s):** ECHO outputs 5 V, but ESP32 pins
-tolerate 3.3 V.
+tolerate 3.3 V. Use your **1 kΩ** and **2.2 kΩ** resistors, one pair per sensor
+(so 2 × 1 kΩ and 2 × 2.2 kΩ in total).
 
 ```
 HC-SR04 ECHO ──[ 1 kΩ ]──┬── ESP32 GPIO (33 or 14)
                           │
-                       [ 2 kΩ ]   (2.2 kΩ also works)
+                      [ 2.2 kΩ ]
                           │
                          GND
 ```
+
+- The **1 kΩ** goes between ECHO and the ESP32 pin. The **2.2 kΩ** goes from the
+  ESP32 pin to GND. Don't swap them: the other way round gives only 1.6 V, which
+  the ESP32 can't read.
+- The pin then gets 5 V × 2.2 / (1 + 2.2) ≈ **3.4 V**, which the ESP32 handles fine.
+- Colour bands: 1 kΩ is **brown-black-red**, 2.2 kΩ is **red-red-red**.
 
 ---
 
@@ -175,13 +185,16 @@ the same pins for upload and for the link.
 2. Valid card → camera feed opens and the LCD counts down 5 s (`DEPOSIT_TIME`).
 3. User puts waste on the flap. There is no lock (the solenoid was removed).
 4. Main ESP32 sends `CAPTURE` on GPIO 17 → CAM receives on GPIO 1.
-5. CAM flashes the LED, takes a photo, runs the model, and replies on GPIO 3 →
-   main receives on GPIO 16 with `RESULT:WET:0.93`, `RESULT:DRY:0.88` or
-   `RESULT:NONE:0.97`.
+5. CAM flashes the LED, takes a photo and first compares it with the photo of
+   the empty flap it took at power-on. If they look the same, it replies
+   `RESULT:NONE`. Otherwise it runs the model. The reply goes out on GPIO 3 →
+   main receives on GPIO 16 as `RESULT:WET:0.93`, `RESULT:DRY:0.88` or
+   `RESULT:NONE:1.00`.
 6. Main ESP32 sorts it: servo on GPIO 13 tilts the flap to 30° (WET) or
    150° (DRY), or stays centered for `NONE`.
-7. Main ESP32 awards points if confidence ≥ `MIN_CONFIDENCE` (0.60) and writes
-   to Firebase.
+7. Main ESP32 awards points only for WET or DRY with confidence ≥
+   `MIN_CONFIDENCE` (0.60), and writes to Firebase. `NONE` or a low-confidence
+   guess shows "No waste seen / No points given".
 8. Ultrasonic sensors on GPIO 32/33 and 25/14 measure fill level; the LCD shows
    it and an alert fires at 90 %.
 
@@ -193,10 +206,77 @@ the same pins for upload and for the link.
 - [ ] LM2596 output set to **5.0 V** with nothing else connected.
 - [ ] ESP32-CAM taken off the MB programmer and wired to the 5 V rail and the main ESP32.
 - [ ] RC522 is on **3V3**, not 5 V.
-- [ ] Both HC-SR04 ECHO lines go through the 1 kΩ / 2 kΩ divider.
+- [ ] Both HC-SR04 ECHO lines go through the **1 kΩ / 2.2 kΩ** divider (1 kΩ on the ECHO side).
 - [ ] All GNDs are common.
 - [ ] CAM UART wires are **unplugged** while flashing the CAM.
-- [ ] Edge Impulse library `#include` in `EcoStation_Cam.ino` matches the library name.
+- [ ] Edge Impulse library installed in the Arduino IDE (section 5a). `EcoStation_Cam`
+      already has the matching line `#include <shivali-project-2_inferencing.h>`.
+- [ ] **The flap is empty when you switch the station on.** The CAM photographs the
+      empty flap at power-on and uses it to spot "nothing there" (section 5b).
+
+---
+
+## 5a. Getting and installing the Edge Impulse library
+
+The library is not on the internet for download. Edge Impulse builds it from
+**your own trained project**, so it only exists in your account.
+
+**Get the .zip**
+
+1. Go to [studio.edgeimpulse.com](https://studio.edgeimpulse.com) and sign in.
+2. Open the project **shivali-project-2**.
+3. In the left menu click **Deployment**.
+4. Under *Deployment target*, search for and pick **Arduino library**.
+5. Leave *Quantized (int8)* selected (it's smaller and faster on the ESP32-CAM).
+6. Click **Build** at the bottom and wait about a minute. The .zip downloads by
+   itself to your **Downloads** folder, named like
+   `ei-shivali-project-2-arduino-1.0.3-impulse-#1.zip`.
+
+   If nothing seems to download, check Chrome's downloads list (Ctrl+J). If you
+   click Build several times you get several copies; use the newest one.
+
+**Install it in the Arduino IDE**
+
+1. Open the Arduino IDE.
+2. Click **Sketch > Include Library > Add .ZIP Library...**
+3. Pick the .zip from Downloads and click **Open**. Don't unzip it first.
+4. Check it worked: **File > Examples** should now show **shivali-project-2_inferencing**.
+
+If the IDE says a library with that name already exists, delete the old folder
+`Documents\Arduino\libraries\shivali-project-2_inferencing` and add the .zip again.
+
+**Upload the camera sketch**
+
+1. Open `EcoStation_Cam/EcoStation_Cam.ino`.
+2. **Tools > Board > esp32 > AI Thinker ESP32-CAM**.
+3. Seat the CAM on the MB programmer, plug in USB, pick its COM port, then click
+   **Upload**. The first compile takes several minutes because the model is big.
+4. Open **Tools > Serial Monitor** at 115200. You should see
+   `Empty flap photo saved` and then `CAM READY`.
+
+## 5b. How an empty flap is stopped from earning points
+
+Your model only knows `wet` and `dry`, so on its own it would call an empty flap
+one of those. Two checks stop that:
+
+1. **Empty-flap photo (built in, nothing to train).** At power-on the CAM takes
+   a photo of the empty flap. For every scan it measures how different the new
+   photo is and prints it as `diff from empty flap: 4.2 (limit 12.0)`. Below the
+   limit it sends `RESULT:NONE`, and the main ESP32 gives no points.
+2. **Confidence check (main ESP32).** WET/DRY with less than 60 % confidence is
+   also treated as `NONE`.
+
+**Tune the limit once:** with the Serial Monitor open, scan with an empty flap a
+few times and note the diff (e.g. 3 to 6). Then scan with a small item, like a
+folded paper (e.g. 20 or more). Set `EMPTY_DIFF_LIMIT` near the top of
+`EcoStation_Cam.ino` to a number in between and upload again.
+
+Keep the lighting steady and don't move the camera after power-on. If you
+move it, press **RST** on the CAM with the flap empty to take a new photo.
+
+**Optional, if you have time:** in Edge Impulse add a third label called
+`empty` with about 100 photos of the bare flap, retrain, and rebuild the library.
+The sketch already understands an `empty` label and will send `RESULT:NONE` for it.
 
 ---
 
@@ -204,14 +284,16 @@ the same pins for upload and for the link.
 
 | Sketch | Board | Result |
 |---|---|---|
-| `EcoStation_Main` | `esp32:esp32:esp32` | compiles (83 % flash) |
-| `EcoStation_Cam_Server` | `esp32:esp32:esp32cam` | compiles (35 % flash) |
-| `EcoStation_Cam` | `esp32:esp32:esp32cam` | fails: `Wet_Dry_Waste_inferencing.h` not found. Needs your Edge Impulse library. |
+| `EcoStation_Cam` | `esp32:esp32:esp32cam` | **compiles** with `shivali-project-2_inferencing` 1.0.3 (29 % flash, 14 % RAM) |
+| `EcoStation_Main` | `esp32:esp32:esp32` | compiles (83 % flash); unchanged |
+| `EcoStation_Cam_Server` | `esp32:esp32:esp32cam` | backup only, not used |
 
-## 7. Known gaps (from code review)
+## 7. Known gaps
 
-- **Option A has no `NONE` class.** `EcoStation_Cam.ino` only sends WET or DRY, so
-  an empty flap can still earn points. Add an `empty` label to the Edge Impulse
-  project and emit `RESULT:NONE` from the CAM sketch.
+- **Fixed: empty flap earning points.** `EcoStation_Cam` now sends `RESULT:NONE`
+  when the photo matches the empty flap, or when an `empty` label wins. The main
+  ESP32 gives no points for `NONE`.
+- **The empty-flap check needs the flap empty at power-on** and steady lighting.
+  Press RST on the CAM to retake the photo if things change.
 - **Camera model is RGB only.** `getData()` packs three bytes per pixel. Keep the
-  Edge Impulse impulse on RGB.
+  Edge Impulse impulse on RGB (yours is).

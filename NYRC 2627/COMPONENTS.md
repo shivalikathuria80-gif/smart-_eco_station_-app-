@@ -58,9 +58,9 @@ Items 6–8 (12V solenoid lock, relay module, 1N4007 diode) were removed: this b
 | LCD I2C | SCL | GPIO 22 |
 | Buzzer | + | GPIO 4 |
 | HC-SR04 WET | TRIG | GPIO 32 |
-| HC-SR04 WET | ECHO | GPIO 33 (through 1k/2k divider) |
+| HC-SR04 WET | ECHO | GPIO 33 (through 1k/2.2k divider) |
 | HC-SR04 DRY | TRIG | GPIO 25 |
-| HC-SR04 DRY | ECHO | GPIO 14 (through 1k/2k divider) |
+| HC-SR04 DRY | ECHO | GPIO 14 (through 1k/2.2k divider) |
 | Servo | Signal (orange) | GPIO 13 |
 | ESP32-CAM | U0T (GPIO 1) | GPIO 16 (RX2) |
 | ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) |
@@ -78,7 +78,7 @@ The HC-SR04 ECHO pin outputs 5V, but ESP32 pins take 3.3V max.
 ```
 ECHO ──[ 1kΩ ]──┬── ESP32 GPIO
                 │
-             [ 2kΩ ]
+             [ 2.2kΩ ]
                 │
                GND
 ```
