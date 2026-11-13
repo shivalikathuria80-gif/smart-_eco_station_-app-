@@ -3,13 +3,27 @@
  *  SMART ECO STATION  -  ESP32-CAM WASTE CLASSIFIER (AI-Thinker board)
  * ============================================================================
  *  Waits for "CAPTURE" on Serial (from main ESP32), takes a photo, runs the
- *  Edge Impulse model and replies:   RESULT:WET:0.93   or   RESULT:DRY:0.88
+ *  Edge Impulse model and replies one line:
+ *      RESULT:WET:0.93     wet waste
+ *      RESULT:DRY:0.88     dry waste
+ *      RESULT:NONE:0.97    nothing on the flap (no points are given)
+ *
+ *  How "nothing on the flap" is detected (two ways, either one is enough):
+ *    1. EMPTY-FLAP PHOTO: when the CAM switches on it photographs the empty
+ *       flap and remembers it. If a later photo looks almost the same, the
+ *       flap is empty. So switch the station on with the flap EMPTY.
+ *       Tune EMPTY_DIFF_LIMIT using the "diff from empty flap" number that is
+ *       printed on the Serial Monitor for every photo.
+ *    2. OPTIONAL "empty" LABEL: if you later add a third label called "empty"
+ *       (photos of the bare flap) in Edge Impulse, it is used automatically.
  *
  *  Setup:
- *    1. Train an image-classification model on Edge Impulse with exactly two
- *       labels: "wet" and "dry" (photos taken with THIS camera on the flap).
- *    2. Deployment -> Arduino library -> Sketch > Include Library > Add .ZIP.
- *    3. Change the #include below to the header name of your library.
+ *    1. Edge Impulse project with labels "wet" and "dry" (photos taken with
+ *       THIS camera on the flap). RGB colour, 96x96.
+ *    2. Deployment -> Arduino library -> Build. A .zip downloads.
+ *    3. Arduino IDE: Sketch > Include Library > Add .ZIP Library... -> pick it.
+ *    4. The #include below must match the library name (it does for
+ *       shivali-project-2).
  *  Board: "AI Thinker ESP32-CAM", PSRAM enabled.
  *  NOTE: GPIO1/GPIO3 are also used for uploading - unplug the wires to the
  *        main ESP32 while flashing.
@@ -42,7 +56,15 @@
 #define RAW_W 320
 #define RAW_H 240
 
+// Empty-flap check: average colour difference (0-255) between this photo and
+// the empty-flap photo taken at power-on. Below this -> "nothing on the flap".
+// Watch "diff from empty flap" on the Serial Monitor: put the limit between
+// the number you see with an empty flap and the number with a small item.
+const float EMPTY_DIFF_LIMIT = 12.0;
+
 static uint8_t* snapshot = nullptr;
+static uint8_t* emptyFlap = nullptr;     // 96x96 RGB photo of the empty flap
+static bool haveEmptyFlap = false;
 
 bool initCamera() {
   camera_config_t c = {};
@@ -93,8 +115,37 @@ bool captureImage() {
   return true;
 }
 
+const size_t MODEL_IMG_BYTES = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT * 3;
+
+// Average difference per colour value between the current photo and the
+// empty-flap photo (0 = identical, 255 = completely different).
+float diffFromEmptyFlap() {
+  uint32_t total = 0;
+  for (size_t i = 0; i < MODEL_IMG_BYTES; i++) total += abs((int)snapshot[i] - (int)emptyFlap[i]);
+  return (float)total / MODEL_IMG_BYTES;
+}
+
+void rememberEmptyFlap() {
+  if (captureImage()) {
+    memcpy(emptyFlap, snapshot, MODEL_IMG_BYTES);
+    haveEmptyFlap = true;
+    Serial.println("Empty flap photo saved");
+  } else {
+    Serial.println("Could not take the empty flap photo");
+  }
+}
+
 void classify() {
   if (!captureImage()) { Serial.println("ERROR:CAPTURE"); return; }
+
+  if (haveEmptyFlap) {
+    float diff = diffFromEmptyFlap();
+    Serial.printf("  diff from empty flap: %.1f (limit %.1f)\n", diff, EMPTY_DIFF_LIMIT);
+    if (diff < EMPTY_DIFF_LIMIT) {
+      Serial.println("RESULT:NONE:1.00");
+      return;
+    }
+  }
 
   signal_t signal;
   signal.total_length = EI_CLASSIFIER_INPUT_WIDTH * EI_CLASSIFIER_INPUT_HEIGHT;
@@ -106,17 +157,19 @@ void classify() {
     return;
   }
 
-  float wet = 0, dry = 0;
+  float wet = 0, dry = 0, empty = 0;
   for (size_t i = 0; i < EI_CLASSIFIER_LABEL_COUNT; i++) {
     String label = String(result.classification[i].label);
     label.toLowerCase();
     Serial.printf("  %s: %.2f\n", label.c_str(), result.classification[i].value);
     if (label == "wet") wet = result.classification[i].value;
     if (label == "dry") dry = result.classification[i].value;
+    if (label == "empty" || label == "none" || label == "nothing") empty = result.classification[i].value;
   }
   // Main board only reacts to the line starting with "RESULT:"
-  if (wet > dry) Serial.printf("RESULT:WET:%.2f\n", wet);
-  else           Serial.printf("RESULT:DRY:%.2f\n", dry);
+  if (empty > wet && empty > dry) Serial.printf("RESULT:NONE:%.2f\n", empty);
+  else if (wet > dry)             Serial.printf("RESULT:WET:%.2f\n", wet);
+  else                            Serial.printf("RESULT:DRY:%.2f\n", dry);
 }
 
 void setup() {
@@ -125,10 +178,13 @@ void setup() {
   digitalWrite(FLASH_LED_PIN, LOW);
 
   snapshot = (uint8_t*)ps_malloc(RAW_W * RAW_H * 3);
-  if (!snapshot || !initCamera()) {
+  emptyFlap = (uint8_t*)ps_malloc(MODEL_IMG_BYTES);
+  if (!snapshot || !emptyFlap || !initCamera()) {
     Serial.println("ERROR:CAMERA_INIT");
     while (true) delay(1000);
   }
+  delay(1000);                 // let the camera adjust to the light first
+  rememberEmptyFlap();         // the flap must be EMPTY when switching on
   Serial.println("CAM READY");
 }
 

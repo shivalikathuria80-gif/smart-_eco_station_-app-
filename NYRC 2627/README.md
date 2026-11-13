@@ -29,7 +29,7 @@ stay on and on the same Wi-Fi as the station.
 | Ultrasonic – DRY bin | TRIG · ECHO | 25 · 14 |
 | ESP32-CAM | CAM U0T (GPIO1) → RX · CAM U0R (GPIO3) ← TX | 16 · 17 |
 
-- HC-SR04 ECHO outputs 5 V → use a 1 kΩ / 2 kΩ divider before the ESP32 pin.
+- HC-SR04 ECHO outputs 5 V → use a 1 kΩ / 2.2 kΩ divider before the ESP32 pin (1 kΩ on the ECHO side, 2.2 kΩ to GND).
 - All grounds (ESP32, CAM, servo supply, 12 V supply) must be connected together.
 - Disconnect the CAM's GPIO1/GPIO3 wires while uploading to the CAM.
 
@@ -38,10 +38,11 @@ stay on and on the same Wi-Fi as the station.
 1. **Libraries** (Library Manager): `MFRC522`, `ESP32Servo`, `LiquidCrystal I2C`.
 2. **Main sketch:** set `WIFI_SSID`, `WIFI_PASSWORD`, `STATION_ID`, `BIN_DEPTH_CM`.
    If your Firebase rules block unauthenticated writes, put a database secret in `FIREBASE_AUTH`.
-3. **Camera model:** on [Edge Impulse](https://edgeimpulse.com) create an image-classification
-   project with labels `wet` and `dry` (≈100+ photos each, taken by the ESP32-CAM on the flap),
-   export as an **Arduino library**, add the .zip, and fix the `#include` at the top of
-   `EcoStation_Cam.ino`.
+3. **Camera model (Option A, the one we use):** your Edge Impulse project
+   `shivali-project-2` (labels `wet` and `dry`). Deployment → Arduino library → Build,
+   then in the Arduino IDE Sketch > Include Library > Add .ZIP Library. The `#include`
+   in `EcoStation_Cam.ino` already matches. Switch the station on with the flap empty:
+   the CAM uses that photo to detect "nothing on the flap" (see WIRING.md 5a and 5b).
 4. Register cards on the website's Authority Portal. The UID format printed on
    the Serial Monitor (e.g. `A3 5F 8C 12`) is exactly what the website uses.
 
