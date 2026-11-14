@@ -6,6 +6,7 @@ Two sketches that talk to the same Firebase database as the website
 | Folder | Board | Job |
 |---|---|---|
 | `EcoStation_Main/` | ESP32 DevKit | RFID, servo, 2× ultrasonic, LCD, Wi-Fi → Firebase |
+| `EcoStation_Main_Button/` | ESP32 DevKit | Same, but users picked with a push button / Serial Monitor (no RFID) |
 | `EcoStation_Cam/`  | ESP32-CAM (AI-Thinker) | **Option A:** classifies wet/dry on the CAM (Edge Impulse model) |
 | `EcoStation_Cam_Server/` | ESP32-CAM (AI-Thinker) | **Option B:** sends photo to `ClassifierServer`, relays WET/DRY |
 | `ClassifierServer/` | PC / Raspberry Pi | Flask server running a Teachable Machine model (`python app.py`) |
@@ -25,7 +26,7 @@ stay on and on the same Wi-Fi as the station.
 | I2C LCD 16×2 | SDA · SCL | 21 · 22 |
 | Servo MG996R (signal) | SIG | 13 (power from separate 5 V supply, common GND) |
 | Buzzer | + | 4 |
-| Push button (no-RFID backup) | one leg · diagonal leg | 26 · GND |
+| Push button (button version only) | one leg · diagonal leg | 26 · GND |
 | Ultrasonic – WET bin | TRIG · ECHO | 32 · 33 |
 | Ultrasonic – DRY bin | TRIG · ECHO | 25 · 14 |
 | ESP32-CAM | CAM U0T (GPIO1) → RX · CAM U0R (GPIO3) ← TX | 16 · 17 |
@@ -37,9 +38,9 @@ stay on and on the same Wi-Fi as the station.
 ## Setup
 
 1. **Libraries** (Library Manager): `ESP32Servo`, `LiquidCrystal I2C`, plus `MFRC522`
-   if you use the card reader. `#define USE_RFID 0` (top of the main sketch) runs the
-   station without RFID: users are picked with the button on GPIO 26 or from the
-   Serial Monitor. Set it to `1` to use the RC522 again (see WIRING.md section 2).
+   for the card version. There are two main sketches; upload one:
+   `EcoStation_Main` (RFID card) or `EcoStation_Main_Button` (no RFID, push button
+   on GPIO 26 or Serial Monitor). See WIRING.md section 2.
 2. **Main sketch:** set `WIFI_SSID`, `WIFI_PASSWORD`, `STATION_ID`, `BIN_DEPTH_CM`.
    If your Firebase rules block unauthenticated writes, put a database secret in `FIREBASE_AUTH`.
 3. **Camera model (Option A, the one we use):** your Edge Impulse project

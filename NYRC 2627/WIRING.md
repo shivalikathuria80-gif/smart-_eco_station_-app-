@@ -111,7 +111,7 @@ and upload again. Afterwards press **RST** to run the sketch.
 | LCD 16×2 I2C | SCL | GPIO 22 | I2C |
 | Servo MG996R | Signal (orange) | GPIO 13 | `SERVO_PIN` |
 | Buzzer | + | GPIO 4 | `BUZZER_PIN` |
-| Push button (backup for RFID) | one leg | GPIO 26 | `BUTTON_PIN` |
+| Push button (button version only) | one leg | GPIO 26 | `BUTTON_PIN` |
 | Push button | opposite corner leg | GND | (no resistor needed) |
 | HC-SR04 WET bin | TRIG | GPIO 32 | `WET_TRIG_PIN` |
 | HC-SR04 WET bin | ECHO | GPIO 33 via 1 kΩ / 2.2 kΩ divider | `WET_ECHO_PIN` |
@@ -121,10 +121,11 @@ and upload again. Afterwards press **RST** to run the sketch.
 | ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) | `CAM_TX_PIN` |
 | Buzzer, LCD, HC-SR04, servo | GND | any GND pin | common ground |
 
-**No-RFID backup mode (push button):** at the top of `EcoStation_Main.ino`,
-`#define USE_RFID 0` turns the card reader off, and users are picked with a push
-button instead. Set it to `1` when a working RC522 is plugged in on the same pins
-above; the button keeps working alongside it.
+**Two main sketches, pick one to upload:**
+- `EcoStation_Main` (card version): users tap an RFID card on the RC522. Use this when the reader works.
+- `EcoStation_Main_Button` (button version): no RFID. Users are picked with a push
+  button on GPIO 26 or from the Serial Monitor. Use this if the reader fails.
+  Everything else (wiring, Firebase, camera, servo, points) is the same in both.
 
 - Wiring is two wires and no resistor. A 4-leg button has its legs joined in
   pairs, so use two legs at **opposite corners** (diagonal). One goes to

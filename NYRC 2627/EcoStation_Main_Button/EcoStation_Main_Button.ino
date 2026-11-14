@@ -1,0 +1,530 @@
+/*
+ * ============================================================================
+ *  SMART ECO STATION  -  MAIN CONTROLLER (ESP32 DevKit)  -  BUTTON VERSION
+ * ============================================================================
+ *  This is the NO-RFID version. Use EcoStation_Main (card version) when the
+ *  RC522 reader works. Same wiring for everything else.
+ *
+ *  Flow:
+ *    1. User is picked                       -> checked against Firebase /users
+ *         - the push button on GPIO 26 (press = next name, hold = choose), or
+ *         - the Serial Monitor (type a number, "list" or "reload")
+ *    2. Valid card -> camera feed opens      -> LCD asks user to put waste in
+ *    3. User puts waste on the flap          -> ESP32-CAM (UART) says "WET" or "DRY"
+ *    4. Servo tilts flap into the right bin  -> user gets reward points
+ *    5. Two ultrasonic sensors measure fill  -> LCD + Firebase /bins (portal)
+ *
+ *  Firebase paths (same as the website "smart eco station.html"):
+ *    /users/{UID}          { name, points }
+ *    /bins/{STATION_ID}    { zone, columns: { wet, dry }, updated }
+ *    /logs/{pushId}        { type: scan|reward|alert, text, time }
+ *
+ *  Libraries (Arduino Library Manager):
+ *    - ESP32Servo         (Kevin Harrington)
+ *    - LiquidCrystal I2C  (Frank de Brabander)
+ *  Board: "ESP32 Dev Module"  (esp32 core by Espressif, v2.x or v3.x)
+ * ============================================================================
+ */
+
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <ESP32Servo.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <time.h>
+
+// ---------------------------------------------------------------- SETTINGS --
+const char* WIFI_SSID     = "YOUR_WIFI_NAME";
+const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+
+// Realtime Database URL from the website's firebaseConfig (no trailing slash)
+const char* FIREBASE_URL  = "https://smart-eco-station-default-rtdb.europe-west1.firebasedatabase.app";
+// Leave "" if your DB rules allow writes; otherwise put a Database Secret here
+const char* FIREBASE_AUTH = "";
+
+const char* STATION_ID    = "STATION-01";     // shows as the bin card title
+const char* STATION_ZONE  = "School Block A"; // shows under the bin card title
+
+const int   POINTS_PER_ITEM = 10;
+const float MIN_CONFIDENCE  = 0.60;  // below this the item is not sorted / not rewarded
+
+// Bin geometry (cm) - measure your own dustbins!
+const float BIN_DEPTH_CM = 40.0;  // sensor to bottom of empty bin
+const float FULL_GAP_CM  = 5.0;   // sensor to waste when we call it 100%
+const int   FULL_ALERT_PERCENT = 90;
+
+// Servo angles for the diverter flap
+const int SERVO_CENTER = 90;
+const int SERVO_WET    = 30;
+const int SERVO_DRY    = 150;
+
+// Timings (ms)
+const unsigned long DEPOSIT_TIME     = 5000;   // time the user gets to put waste on the flap
+const unsigned long ITEM_SETTLE_TIME = 1500;   // wait for item to rest on flap
+const unsigned long CAM_TIMEOUT      = 8000;
+const unsigned long BIN_UPLOAD_EVERY = 15000;
+const unsigned long WIFI_RETRY_EVERY = 10000;
+const unsigned long HOLD_TIME        = 1000;   // hold the button this long to choose
+const unsigned long PICK_TIMEOUT     = 20000;  // no press for this long -> back to idle
+
+const int MAX_USERS = 30;                      // most users the button menu can list
+
+// ------------------------------------------------------------------- PINS --
+// (RC522 not used in this version; pins 5, 18, 19, 23, 27 stay free)
+// I2C LCD: SDA 21, SCL 22
+#define LCD_ADDR       0x27      // try 0x3F if screen stays blank
+#define SERVO_PIN      13
+#define BUZZER_PIN     4
+// Ultrasonic HC-SR04 (ECHO is 5V -> use a 1k/2k voltage divider)
+#define WET_TRIG_PIN   32
+#define WET_ECHO_PIN   33
+#define DRY_TRIG_PIN   25
+#define DRY_ECHO_PIN   14
+// UART to ESP32-CAM
+#define CAM_RX_PIN     16        // <- CAM U0T (GPIO1)
+#define CAM_TX_PIN     17        // -> CAM U0R (GPIO3)
+// Push button: one leg to GPIO 26, the opposite corner leg to GND. No resistor.
+#define BUTTON_PIN     26
+
+// ---------------------------------------------------------------- OBJECTS --
+LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
+Servo flap;
+HardwareSerial CamSerial(2);
+
+int wetLevel = 0, dryLevel = 0;
+bool wetAlertSent = false, dryAlertSent = false;
+unsigned long lastBinUpload = 0;
+unsigned long lastWifiRetry = 0;
+
+// Registered users, loaded from Firebase /users for the button / Serial menu
+String userIds[MAX_USERS];
+String userNames[MAX_USERS];
+int userCount = 0;
+String serialLine;
+
+// ================================================================ HELPERS ==
+void beep(int times, int ms = 80) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(BUZZER_PIN, HIGH); delay(ms);
+    digitalWrite(BUZZER_PIN, LOW);  delay(ms);
+  }
+}
+
+void lcdShow(const String& l1, const String& l2) {
+  lcd.clear();
+  lcd.setCursor(0, 0); lcd.print(l1.substring(0, 16));
+  lcd.setCursor(0, 1); lcd.print(l2.substring(0, 16));
+}
+
+void lcdIdle() {
+  lcdShow("Wet:" + String(wetLevel) + "% Dry:" + String(dryLevel) + "%",
+          (wetLevel >= FULL_ALERT_PERCENT || dryLevel >= FULL_ALERT_PERCENT)
+            ? "!! BIN FULL !!" : "Press button");
+}
+
+String timeNow() {
+  struct tm t;
+  if (!getLocalTime(&t, 100)) return "--:--:--";
+  char buf[12];
+  strftime(buf, sizeof(buf), "%I:%M:%S %p", &t);
+  return String(buf);
+}
+
+String urlEncode(const String& s) {
+  String out;
+  for (char c : s) out += (c == ' ') ? String("%20") : String(c);
+  return out;
+}
+
+String jsonEscape(const String& s) {
+  String out;
+  for (char c : s) { if (c == '"' || c == '\\') out += '\\'; out += c; }
+  return out;
+}
+
+// ============================================================== FIREBASE ==
+// method: GET / PUT / PATCH / POST. Returns response body, "" on failure.
+// query: optional extra URL options, e.g. "shallow=true"
+String firebase(const char* method, const String& path, const String& body = "",
+                const String& query = "") {
+  if (WiFi.status() != WL_CONNECTED) return "";
+  WiFiClientSecure client;
+  client.setInsecure();                   // skip cert check (fine for a school project)
+  HTTPClient http;
+  String url = String(FIREBASE_URL) + "/" + path + ".json";
+  String q = query;
+  if (strlen(FIREBASE_AUTH)) q += String(q.length() ? "&" : "") + "auth=" + String(FIREBASE_AUTH);
+  if (q.length()) url += "?" + q;
+  if (!http.begin(client, url)) return "";
+  http.addHeader("Content-Type", "application/json");
+  int code = http.sendRequest(method, body);
+  String resp = (code > 0) ? http.getString() : "";
+  http.end();
+  if (code != 200) {
+    Serial.printf("[Firebase] %s %s -> %d %s\n", method, path.c_str(), code, resp.c_str());
+    return "";
+  }
+  return resp;
+}
+
+void pushLog(const char* type, const String& text) {
+  firebase("POST", "logs",
+           "{\"type\":\"" + String(type) + "\",\"text\":\"" + jsonEscape(text) +
+           "\",\"time\":\"" + timeNow() + "\"}");
+}
+
+// Returns the user's name, or "" if the card isn't registered
+String getUserName(const String& uid) {
+  String r = firebase("GET", "users/" + urlEncode(uid) + "/name");
+  r.trim();
+  if (r.length() < 2 || r == "null") return "";
+  return r.substring(1, r.length() - 1);  // strip JSON quotes
+}
+
+// Adds points atomically on the Firebase server (same as the website's
+// transaction), so a failed read can never overwrite a balance with 0.
+// Returns the new total, or -1 on failure.
+long addPoints(const String& uid, int delta) {
+  String path = "users/" + urlEncode(uid) + "/points";
+  String r = firebase("PUT", path, "{\".sv\":{\"increment\":" + String(delta) + "}}");
+  r.trim();
+  if (r == "") return -1;
+  return r.toInt();
+}
+
+// Fills userIds[] / userNames[] from Firebase /users (the website's user list).
+// Returns how many users were loaded.
+int loadUsers() {
+  userCount = 0;
+  // shallow=true -> {"A3 5F 8C 12":true,"B1 22 ...":true}  (just the IDs)
+  String r = firebase("GET", "users", "", "shallow=true");
+  int i = 0;
+  while (userCount < MAX_USERS) {
+    int a = r.indexOf('"', i);
+    if (a < 0) break;
+    int b = r.indexOf('"', a + 1);
+    if (b < 0) break;
+    String id = r.substring(a + 1, b);
+    i = b + 1;
+    String name = getUserName(id);
+    userIds[userCount]   = id;
+    userNames[userCount] = name.length() ? name : id;
+    userCount++;
+  }
+  Serial.printf("[Users] %d loaded from Firebase\n", userCount);
+  return userCount;
+}
+
+void printUsers() {
+  Serial.println("---- Users (type the number and press Enter) ----");
+  for (int i = 0; i < userCount; i++)
+    Serial.printf("  %d = %s  (%s)\n", i + 1, userNames[i].c_str(), userIds[i].c_str());
+  if (!userCount) Serial.println("  (none - check WiFi/Firebase, then type: reload)");
+  Serial.println("  list = show this again, reload = fetch users again");
+}
+
+void uploadBinLevels() {
+  firebase("PATCH", "bins/" + String(STATION_ID),
+           "{\"zone\":\"" + jsonEscape(STATION_ZONE) + "\","
+           "\"columns\":{\"wet\":" + String(wetLevel) + ",\"dry\":" + String(dryLevel) + "},"
+           "\"updated\":\"" + timeNow() + "\"}");
+}
+
+// ============================================================ ULTRASONIC ==
+float readDistanceCm(int trig, int echo) {
+  float sum = 0; int good = 0;
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(trig, LOW);  delayMicroseconds(2);
+    digitalWrite(trig, HIGH); delayMicroseconds(10);
+    digitalWrite(trig, LOW);
+    long us = pulseIn(echo, HIGH, 30000);   // 30 ms timeout (~5 m)
+    if (us > 0) { sum += us * 0.0343 / 2.0; good++; }
+    delay(30);
+  }
+  return good ? sum / good : BIN_DEPTH_CM;   // no echo -> treat as empty
+}
+
+int toPercent(float distance) {
+  float pct = (BIN_DEPTH_CM - distance) / (BIN_DEPTH_CM - FULL_GAP_CM) * 100.0;
+  return constrain((int)pct, 0, 100);
+}
+
+void updateBinLevels() {
+  wetLevel = toPercent(readDistanceCm(WET_TRIG_PIN, WET_ECHO_PIN));
+  dryLevel = toPercent(readDistanceCm(DRY_TRIG_PIN, DRY_ECHO_PIN));
+  Serial.printf("[Bins] wet=%d%% dry=%d%%\n", wetLevel, dryLevel);
+
+  // One alert per overflow; reset once the bin is emptied
+  if (wetLevel >= FULL_ALERT_PERCENT && !wetAlertSent) {
+    pushLog("alert", String(STATION_ID) + " - WET bin is " + wetLevel + "% full. Please empty.");
+    wetAlertSent = true;
+  } else if (wetLevel < FULL_ALERT_PERCENT - 20) wetAlertSent = false;
+
+  if (dryLevel >= FULL_ALERT_PERCENT && !dryAlertSent) {
+    pushLog("alert", String(STATION_ID) + " - DRY bin is " + dryLevel + "% full. Please empty.");
+    dryAlertSent = true;
+  } else if (dryLevel < FULL_ALERT_PERCENT - 20) dryAlertSent = false;
+}
+
+// ============================================================== ESP32-CAM ==
+// Sends "CAPTURE", expects "RESULT:WET:0.93", "RESULT:DRY:0.88" or
+// "RESULT:NONE:0.97" (nothing on the flap).
+// Returns "WET", "DRY", "NONE" (empty / not sure) or "" on timeout/error.
+String classifyWaste() {
+  while (CamSerial.available()) CamSerial.read();   // flush old data
+  CamSerial.println("CAPTURE");
+  unsigned long start = millis();
+  String line;
+  while (millis() - start < CAM_TIMEOUT) {
+    if (!CamSerial.available()) { delay(5); continue; }
+    char c = CamSerial.read();
+    if (c == '\n') {
+      line.trim();
+      Serial.println("[CAM] " + line);
+      if (line.startsWith("RESULT:")) {
+        int c2 = line.indexOf(':', 7);
+        String label = line.substring(7, c2 < 0 ? line.length() : c2);
+        float conf = c2 < 0 ? 1.0 : line.substring(c2 + 1).toFloat();
+        if ((label == "WET" || label == "DRY") && conf >= MIN_CONFIDENCE) return label;
+        return "NONE";
+      }
+      if (line.startsWith("ERROR:")) return "";
+      line = "";                                    // ignore debug lines
+    } else line += c;
+  }
+  return "";
+}
+
+void sortItem(bool wet) {
+  flap.write(wet ? SERVO_WET : SERVO_DRY);
+  delay(1200);
+  flap.write(SERVO_CENTER);
+  delay(500);
+}
+
+// ========================================================= USER PICKERS ==
+// Button wired to GND with INPUT_PULLUP: reads LOW while pressed.
+bool buttonDown() { return digitalRead(BUTTON_PIN) == LOW; }
+
+// Waits for one press. Returns 0 = no press before timeout, 1 = short, 2 = long.
+// While the button is held past HOLD_TIME it beeps once so the user knows to let go.
+int waitPress(unsigned long timeout) {
+  unsigned long start = millis();
+  while (!buttonDown()) {
+    if (millis() - start > timeout) return 0;
+    delay(10);
+  }
+  delay(30);                                       // debounce
+  unsigned long down = millis();
+  bool longBeeped = false;
+  while (buttonDown()) {
+    if (!longBeeped && millis() - down >= HOLD_TIME) { beep(1, 60); longBeeped = true; }
+    delay(10);
+  }
+  delay(30);                                       // debounce release
+  return (millis() - down >= HOLD_TIME) ? 2 : 1;
+}
+
+// Button menu: short press = next name, hold 1 s = choose that name.
+// Returns the chosen user ID, or "" if nobody was chosen.
+String pickUserWithButton() {
+  while (buttonDown()) delay(10);                  // let go of the first press
+  if (userCount == 0) {
+    lcdShow("Loading users", "Please wait...");
+    loadUsers();
+    if (userCount == 0) {
+      lcdShow("No users found", "Check WiFi/DB");
+      beep(3, 150);
+      delay(2500);
+      return "";
+    }
+  }
+  int idx = 0;
+  while (true) {
+    lcdShow(String(idx + 1) + "/" + String(userCount) + " " + userNames[idx],
+            "Press=next Hold=OK");
+    int p = waitPress(PICK_TIMEOUT);
+    if (p == 0) return "";                         // walked away
+    if (p == 2) return userIds[idx];
+    idx = (idx + 1) % userCount;
+    beep(1, 20);
+  }
+}
+
+// Serial Monitor (115200, "Newline"): a number from the list, a full card ID
+// like "A3 5F 8C 12", "list" or "reload". Returns a user ID or "".
+String pickUserFromSerial() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\r') continue;
+    if (c != '\n') { if (serialLine.length() < 40) serialLine += c; continue; }
+    String cmd = serialLine;
+    serialLine = "";
+    cmd.trim();
+    if (!cmd.length()) continue;
+    if (cmd.equalsIgnoreCase("list")) { printUsers(); continue; }
+    if (cmd.equalsIgnoreCase("reload")) { loadUsers(); printUsers(); continue; }
+    int n = cmd.toInt();
+    if (n >= 1 && n <= userCount && String(n) == cmd) return userIds[n - 1];
+    if (n > 0 && String(n) == cmd) {
+      Serial.println("No user number " + cmd + ". Type: list");
+      continue;
+    }
+    cmd.toUpperCase();
+    return cmd;                                    // treat it as a card ID
+  }
+  return "";
+}
+
+// ================================================================= SETUP ==
+void setup() {
+  Serial.begin(115200);
+  CamSerial.begin(115200, SERIAL_8N1, CAM_RX_PIN, CAM_TX_PIN);
+
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(WET_TRIG_PIN, OUTPUT); pinMode(WET_ECHO_PIN, INPUT);
+  pinMode(DRY_TRIG_PIN, OUTPUT); pinMode(DRY_ECHO_PIN, INPUT);
+
+  lcd.init(); lcd.backlight();
+  lcdShow("Smart Eco", "Station booting");
+
+  flap.setPeriodHertz(50);
+  flap.attach(SERVO_PIN, 500, 2400);
+  flap.write(SERVO_CENTER);
+
+
+  lcdShow("Connecting WiFi", WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi OK: " + WiFi.localIP().toString());
+    configTime(19800, 0, "pool.ntp.org");            // IST (UTC+5:30)
+    lcdShow("WiFi connected", WiFi.localIP().toString());
+  } else {
+    lcdShow("WiFi FAILED", "Offline mode");
+  }
+  delay(1500);
+
+  // Boot check: prove the database link works before users arrive
+  updateBinLevels();
+  String ok = "";
+  if (WiFi.status() == WL_CONNECTED) {
+    uploadBinLevels();
+    ok = firebase("GET", "bins/" + String(STATION_ID) + "/zone");
+  }
+  Serial.println(ok.length() ? "[Firebase] link OK" : "[Firebase] link FAILED - check URL / rules / FIREBASE_AUTH");
+  lcdShow(ok.length() ? "Firebase OK" : "Firebase FAILED", ok.length() ? STATION_ID : "Check rules/auth");
+  if (!ok.length()) beep(3, 300);
+  delay(1500);
+
+  lcdShow("Loading users", "Please wait...");
+  loadUsers();
+  lcdShow(String(userCount) + " users ready", "Button mode");
+  printUsers();
+  delay(1500);
+  lastBinUpload = millis();
+  lcdIdle();
+}
+
+// ================================================================== LOOP ==
+void loop() {
+  if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetry > WIFI_RETRY_EVERY) {
+    WiFi.reconnect();                                // retry every 10 s, not every loop
+    lastWifiRetry = millis();
+  }
+
+  // Periodic fill-level report (LCD + website)
+  if (millis() - lastBinUpload > BIN_UPLOAD_EVERY) {
+    updateBinLevels();
+    uploadBinLevels();
+    lastBinUpload = millis();
+    lcdIdle();
+  }
+
+  // ---- 1. Wait for a user: Serial Monitor or push button
+  String uid = pickUserFromSerial();
+  if (uid != "") Serial.println("[Serial] " + uid);
+
+  if (uid == "" && buttonDown()) {
+    uid = pickUserWithButton();
+    if (uid == "") { lcdIdle(); return; }
+    Serial.println("[Button] " + uid);
+  }
+
+  if (uid == "") { delay(10); return; }
+
+  lcdShow("User picked", "Checking...");
+  String name = getUserName(uid);
+
+  if (name == "") {
+    lcdShow("ACCESS DENIED", uid);
+    beep(3, 150);
+    pushLog("scan", "Unknown card " + uid + " denied at " + STATION_ID);
+    delay(2500);
+    lcdIdle();
+    return;
+  }
+
+  // ---- 2. Camera feed opens, user puts waste on the flap (no lock)
+  lcdShow("Hi " + name, "Camera on");
+  beep(1);
+  pushLog("scan", name + " (" + uid + ") scanned at " + STATION_ID);
+  for (int s = DEPOSIT_TIME / 1000; s > 0; s--) {
+    lcdShow("Put waste on", "the flap... " + String(s) + "s");
+    delay(1000);
+  }
+
+  // ---- 3. Detect the waste
+  lcdShow("Scanning waste", "Please wait...");
+  delay(ITEM_SETTLE_TIME);
+  String type = classifyWaste();
+  if (type == "") {
+    lcdShow("Camera error", "Try again");
+    beep(2, 200);
+    delay(2000);
+    lcdIdle();
+    return;
+  }
+  if (type == "NONE") {                            // empty flap or unsure -> no points
+    lcdShow("No waste seen", "No points given");
+    beep(2, 200);
+    pushLog("scan", name + " (" + uid + ") - no item detected, no points");
+    delay(2500);
+    lcdIdle();
+    return;
+  }
+  bool wet = (type == "WET");
+
+  // ---- 4. Check target bin isn't full, then sort
+  updateBinLevels();
+  if ((wet ? wetLevel : dryLevel) >= 100) {
+    lcdShow(wet ? "WET bin FULL" : "DRY bin FULL", "Item not sorted");
+    beep(3, 200);
+    pushLog("alert", String(STATION_ID) + " - " + type + " bin full, item rejected");
+    delay(3000);
+    lcdIdle();
+    return;
+  }
+
+  lcdShow("Detected: " + type, wet ? "-> Wet bin" : "-> Dry bin");
+  sortItem(wet);
+
+  // ---- 5. Reward
+  long total = addPoints(uid, POINTS_PER_ITEM);
+  if (total >= 0) {
+    lcdShow("+" + String(POINTS_PER_ITEM) + " points!", "Total: " + String(total));
+    pushLog("reward", name + " earned +" + String(POINTS_PER_ITEM) + " pts (" + type + " waste)");
+  } else {
+    lcdShow("Sorted: " + type, "Points sync fail");
+  }
+  beep(2);
+
+  // ---- 6. Report new fill levels immediately
+  updateBinLevels();
+  uploadBinLevels();
+  lastBinUpload = millis();
+  delay(2500);
+  lcdIdle();
+}
