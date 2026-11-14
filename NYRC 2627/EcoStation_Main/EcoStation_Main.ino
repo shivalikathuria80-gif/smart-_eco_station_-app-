@@ -3,7 +3,10 @@
  *  SMART ECO STATION  -  MAIN CONTROLLER (ESP32 DevKit)
  * ============================================================================
  *  Flow:
- *    1. User taps RFID card (RC522)          -> checked against Firebase /users
+ *    1. User is picked                       -> checked against Firebase /users
+ *         - RFID card on the RC522 (only when USE_RFID is 1), or
+ *         - the push button on GPIO 26 (press = next name, hold = choose), or
+ *         - the Serial Monitor (type a number, "list" or "reload")
  *    2. Valid card -> camera feed opens      -> LCD asks user to put waste in
  *    3. User puts waste on the flap          -> ESP32-CAM (UART) says "WET" or "DRY"
  *    4. Servo tilts flap into the right bin  -> user gets reward points
@@ -15,18 +18,26 @@
  *    /logs/{pushId}        { type: scan|reward|alert, text, time }
  *
  *  Libraries (Arduino Library Manager):
- *    - MFRC522            (GithubCommunity)
+ *    - MFRC522            (GithubCommunity)  - only needed when USE_RFID is 1
  *    - ESP32Servo         (Kevin Harrington)
  *    - LiquidCrystal I2C  (Frank de Brabander)
  *  Board: "ESP32 Dev Module"  (esp32 core by Espressif, v2.x or v3.x)
  * ============================================================================
  */
 
+// ------------------------------------------------------------ RFID SWITCH --
+// 0 = NO RFID (backup mode): pick users with the push button or Serial Monitor.
+// 1 = RFID: the RC522 card reader works as well (same wiring as before:
+//     SDA 5, SCK 18, MOSI 23, MISO 19, RST 27). The button keeps working too.
+#define USE_RFID 0
+
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#if USE_RFID
 #include <SPI.h>
 #include <MFRC522.h>
+#endif
 #include <ESP32Servo.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -63,6 +74,10 @@ const unsigned long ITEM_SETTLE_TIME = 1500;   // wait for item to rest on flap
 const unsigned long CAM_TIMEOUT      = 8000;
 const unsigned long BIN_UPLOAD_EVERY = 15000;
 const unsigned long WIFI_RETRY_EVERY = 10000;
+const unsigned long HOLD_TIME        = 1000;   // hold the button this long to choose
+const unsigned long PICK_TIMEOUT     = 20000;  // no press for this long -> back to idle
+
+const int MAX_USERS = 30;                      // most users the button menu can list
 
 // ------------------------------------------------------------------- PINS --
 // RC522 (SPI): SCK 18, MISO 19, MOSI 23
@@ -80,9 +95,13 @@ const unsigned long WIFI_RETRY_EVERY = 10000;
 // UART to ESP32-CAM
 #define CAM_RX_PIN     16        // <- CAM U0T (GPIO1)
 #define CAM_TX_PIN     17        // -> CAM U0R (GPIO3)
+// Push button: one leg to GPIO 26, the opposite corner leg to GND. No resistor.
+#define BUTTON_PIN     26
 
 // ---------------------------------------------------------------- OBJECTS --
+#if USE_RFID
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
+#endif
 LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
 Servo flap;
 HardwareSerial CamSerial(2);
@@ -91,6 +110,12 @@ int wetLevel = 0, dryLevel = 0;
 bool wetAlertSent = false, dryAlertSent = false;
 unsigned long lastBinUpload = 0;
 unsigned long lastWifiRetry = 0;
+
+// Registered users, loaded from Firebase /users for the button / Serial menu
+String userIds[MAX_USERS];
+String userNames[MAX_USERS];
+int userCount = 0;
+String serialLine;
 
 // ================================================================ HELPERS ==
 void beep(int times, int ms = 80) {
@@ -109,7 +134,7 @@ void lcdShow(const String& l1, const String& l2) {
 void lcdIdle() {
   lcdShow("Wet:" + String(wetLevel) + "% Dry:" + String(dryLevel) + "%",
           (wetLevel >= FULL_ALERT_PERCENT || dryLevel >= FULL_ALERT_PERCENT)
-            ? "!! BIN FULL !!" : "Tap your card");
+            ? "!! BIN FULL !!" : (USE_RFID ? "Card or button" : "Press button"));
 }
 
 String timeNow() {
@@ -120,6 +145,7 @@ String timeNow() {
   return String(buf);
 }
 
+#if USE_RFID
 // UID bytes -> "A3 5F 8C 12" (same format the website registers)
 String readUid() {
   String uid;
@@ -131,6 +157,7 @@ String readUid() {
   uid.toUpperCase();
   return uid;
 }
+#endif
 
 String urlEncode(const String& s) {
   String out;
@@ -146,13 +173,17 @@ String jsonEscape(const String& s) {
 
 // ============================================================== FIREBASE ==
 // method: GET / PUT / PATCH / POST. Returns response body, "" on failure.
-String firebase(const char* method, const String& path, const String& body = "") {
+// query: optional extra URL options, e.g. "shallow=true"
+String firebase(const char* method, const String& path, const String& body = "",
+                const String& query = "") {
   if (WiFi.status() != WL_CONNECTED) return "";
   WiFiClientSecure client;
   client.setInsecure();                   // skip cert check (fine for a school project)
   HTTPClient http;
   String url = String(FIREBASE_URL) + "/" + path + ".json";
-  if (strlen(FIREBASE_AUTH)) url += "?auth=" + String(FIREBASE_AUTH);
+  String q = query;
+  if (strlen(FIREBASE_AUTH)) q += String(q.length() ? "&" : "") + "auth=" + String(FIREBASE_AUTH);
+  if (q.length()) url += "?" + q;
   if (!http.begin(client, url)) return "";
   http.addHeader("Content-Type", "application/json");
   int code = http.sendRequest(method, body);
@@ -188,6 +219,37 @@ long addPoints(const String& uid, int delta) {
   r.trim();
   if (r == "") return -1;
   return r.toInt();
+}
+
+// Fills userIds[] / userNames[] from Firebase /users (the website's user list).
+// Returns how many users were loaded.
+int loadUsers() {
+  userCount = 0;
+  // shallow=true -> {"A3 5F 8C 12":true,"B1 22 ...":true}  (just the IDs)
+  String r = firebase("GET", "users", "", "shallow=true");
+  int i = 0;
+  while (userCount < MAX_USERS) {
+    int a = r.indexOf('"', i);
+    if (a < 0) break;
+    int b = r.indexOf('"', a + 1);
+    if (b < 0) break;
+    String id = r.substring(a + 1, b);
+    i = b + 1;
+    String name = getUserName(id);
+    userIds[userCount]   = id;
+    userNames[userCount] = name.length() ? name : id;
+    userCount++;
+  }
+  Serial.printf("[Users] %d loaded from Firebase\n", userCount);
+  return userCount;
+}
+
+void printUsers() {
+  Serial.println("---- Users (type the number and press Enter) ----");
+  for (int i = 0; i < userCount; i++)
+    Serial.printf("  %d = %s  (%s)\n", i + 1, userNames[i].c_str(), userIds[i].c_str());
+  if (!userCount) Serial.println("  (none - check WiFi/Firebase, then type: reload)");
+  Serial.println("  list = show this again, reload = fetch users again");
 }
 
 void uploadBinLevels() {
@@ -269,12 +331,87 @@ void sortItem(bool wet) {
   delay(500);
 }
 
+// ========================================================= USER PICKERS ==
+// Button wired to GND with INPUT_PULLUP: reads LOW while pressed.
+bool buttonDown() { return digitalRead(BUTTON_PIN) == LOW; }
+
+// Waits for one press. Returns 0 = no press before timeout, 1 = short, 2 = long.
+// While the button is held past HOLD_TIME it beeps once so the user knows to let go.
+int waitPress(unsigned long timeout) {
+  unsigned long start = millis();
+  while (!buttonDown()) {
+    if (millis() - start > timeout) return 0;
+    delay(10);
+  }
+  delay(30);                                       // debounce
+  unsigned long down = millis();
+  bool longBeeped = false;
+  while (buttonDown()) {
+    if (!longBeeped && millis() - down >= HOLD_TIME) { beep(1, 60); longBeeped = true; }
+    delay(10);
+  }
+  delay(30);                                       // debounce release
+  return (millis() - down >= HOLD_TIME) ? 2 : 1;
+}
+
+// Button menu: short press = next name, hold 1 s = choose that name.
+// Returns the chosen user ID, or "" if nobody was chosen.
+String pickUserWithButton() {
+  while (buttonDown()) delay(10);                  // let go of the first press
+  if (userCount == 0) {
+    lcdShow("Loading users", "Please wait...");
+    loadUsers();
+    if (userCount == 0) {
+      lcdShow("No users found", "Check WiFi/DB");
+      beep(3, 150);
+      delay(2500);
+      return "";
+    }
+  }
+  int idx = 0;
+  while (true) {
+    lcdShow(String(idx + 1) + "/" + String(userCount) + " " + userNames[idx],
+            "Press=next Hold=OK");
+    int p = waitPress(PICK_TIMEOUT);
+    if (p == 0) return "";                         // walked away
+    if (p == 2) return userIds[idx];
+    idx = (idx + 1) % userCount;
+    beep(1, 20);
+  }
+}
+
+// Serial Monitor (115200, "Newline"): a number from the list, a full card ID
+// like "A3 5F 8C 12", "list" or "reload". Returns a user ID or "".
+String pickUserFromSerial() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    if (c == '\r') continue;
+    if (c != '\n') { if (serialLine.length() < 40) serialLine += c; continue; }
+    String cmd = serialLine;
+    serialLine = "";
+    cmd.trim();
+    if (!cmd.length()) continue;
+    if (cmd.equalsIgnoreCase("list")) { printUsers(); continue; }
+    if (cmd.equalsIgnoreCase("reload")) { loadUsers(); printUsers(); continue; }
+    int n = cmd.toInt();
+    if (n >= 1 && n <= userCount && String(n) == cmd) return userIds[n - 1];
+    if (n > 0 && String(n) == cmd) {
+      Serial.println("No user number " + cmd + ". Type: list");
+      continue;
+    }
+    cmd.toUpperCase();
+    return cmd;                                    // treat it as a card ID
+  }
+  return "";
+}
+
 // ================================================================= SETUP ==
 void setup() {
   Serial.begin(115200);
   CamSerial.begin(115200, SERIAL_8N1, CAM_RX_PIN, CAM_TX_PIN);
 
   pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(WET_TRIG_PIN, OUTPUT); pinMode(WET_ECHO_PIN, INPUT);
   pinMode(DRY_TRIG_PIN, OUTPUT); pinMode(DRY_ECHO_PIN, INPUT);
 
@@ -285,8 +422,10 @@ void setup() {
   flap.attach(SERVO_PIN, 500, 2400);
   flap.write(SERVO_CENTER);
 
+#if USE_RFID
   SPI.begin();
   rfid.PCD_Init();
+#endif
 
   lcdShow("Connecting WiFi", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -311,6 +450,12 @@ void setup() {
   lcdShow(ok.length() ? "Firebase OK" : "Firebase FAILED", ok.length() ? STATION_ID : "Check rules/auth");
   if (!ok.length()) beep(3, 300);
   delay(1500);
+
+  lcdShow("Loading users", "Please wait...");
+  loadUsers();
+  lcdShow(String(userCount) + " users ready", USE_RFID ? "RFID + button" : "Button mode");
+  printUsers();
+  delay(1500);
   lastBinUpload = millis();
   lcdIdle();
 }
@@ -330,14 +475,28 @@ void loop() {
     lcdIdle();
   }
 
-  // ---- 1. Wait for a card
-  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
-  String uid = readUid();
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
-  Serial.println("[RFID] " + uid);
+  // ---- 1. Wait for a user: Serial Monitor, push button, or RFID card
+  String uid = pickUserFromSerial();
+  if (uid != "") Serial.println("[Serial] " + uid);
 
-  lcdShow("Card detected", "Checking...");
+  if (uid == "" && buttonDown()) {
+    uid = pickUserWithButton();
+    if (uid == "") { lcdIdle(); return; }
+    Serial.println("[Button] " + uid);
+  }
+
+#if USE_RFID
+  if (uid == "" && rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    uid = readUid();
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+    Serial.println("[RFID] " + uid);
+  }
+#endif
+
+  if (uid == "") { delay(10); return; }
+
+  lcdShow("User picked", "Checking...");
   String name = getUserName(uid);
 
   if (name == "") {

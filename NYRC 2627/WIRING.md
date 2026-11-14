@@ -111,6 +111,8 @@ and upload again. Afterwards press **RST** to run the sketch.
 | LCD 16×2 I2C | SCL | GPIO 22 | I2C |
 | Servo MG996R | Signal (orange) | GPIO 13 | `SERVO_PIN` |
 | Buzzer | + | GPIO 4 | `BUZZER_PIN` |
+| Push button (backup for RFID) | one leg | GPIO 26 | `BUTTON_PIN` |
+| Push button | opposite corner leg | GND | (no resistor needed) |
 | HC-SR04 WET bin | TRIG | GPIO 32 | `WET_TRIG_PIN` |
 | HC-SR04 WET bin | ECHO | GPIO 33 via 1 kΩ / 2.2 kΩ divider | `WET_ECHO_PIN` |
 | HC-SR04 DRY bin | TRIG | GPIO 25 | `DRY_TRIG_PIN` |
@@ -118,6 +120,24 @@ and upload again. Afterwards press **RST** to run the sketch.
 | ESP32-CAM | U0T (GPIO 1) | GPIO 16 (RX2) | `CAM_RX_PIN` |
 | ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) | `CAM_TX_PIN` |
 | Buzzer, LCD, HC-SR04, servo | GND | any GND pin | common ground |
+
+**No-RFID backup mode (push button):** at the top of `EcoStation_Main.ino`,
+`#define USE_RFID 0` turns the card reader off, and users are picked with a push
+button instead. Set it to `1` when a working RC522 is plugged in on the same pins
+above; the button keeps working alongside it.
+
+- Wiring is two wires and no resistor. A 4-leg button has its legs joined in
+  pairs, so use two legs at **opposite corners** (diagonal). One goes to
+  **GPIO 26**, the other to any **GND** pin. The code turns on the ESP32's own
+  pull-up resistor, so the pin reads "pressed" only when the button joins it to GND.
+- At power-on the station loads the users registered on the website. Press the
+  button once to open the list, press again to go to the next name, and **hold
+  for 1 second** (you'll hear a beep) to choose. With no press for 20 s it goes back.
+- Serial Monitor alternative (115200 baud, "Newline"): type the user's number
+  from the list and press Enter. `list` shows the numbers again, `reload` fetches
+  new users from the website. You can also type a full ID like `A3 5F 8C 12`.
+- Without cards, register users on the Authority Portal with any short made-up
+  ID (e.g. `USER 01`); the station shows their names.
 
 **ECHO voltage divider (both HC-SR04s):** ECHO outputs 5 V, but ESP32 pins
 tolerate 3.3 V. Use your **1 kΩ** and **2.2 kΩ** resistors, one pair per sensor
