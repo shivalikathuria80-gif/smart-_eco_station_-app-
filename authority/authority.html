@@ -296,7 +296,7 @@
     // The PIN is checked in the browser, so this gate only keeps casual visitors out.
     // Only its SHA-256 hash is stored here, but a 6-digit PIN can still be brute-forced offline:
     // real write protection must come from the Firebase Database Rules.
-    const PIN_HASH = '75d88ce7ba879d5d954e2343d2d329f0c3c0bd95310a1914592521c943445a8f';
+    const PIN_HASH = '31c4dfe98a6dbb58759b41037335eb9bef2db5c7c55a5a604b70885f133a939e';
     const MAX_TRIES = 5, LOCKOUT_MS = 30000;
     let authorityUnlocked = false;
     let firebaseListenersAttached = false;
