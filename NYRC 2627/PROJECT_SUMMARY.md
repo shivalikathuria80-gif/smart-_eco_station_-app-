@@ -23,7 +23,8 @@ A smart dustbin station that **starts with an RFID card tap**, **uses AI to reco
 ### Step 1: scanning the card
 - The person taps their RFID card. The RC522 reads the card's unique number (UID), e.g. `A3 5F 8C 12`.
 - The main ESP32 asks Firebase over Wi-Fi: "Is there a user saved under this card number?"
-- **Not registered:** the LCD shows **ACCESS DENIED**, the buzzer beeps 3 times, and a "denied" entry goes to the website's log.
+- **Not registered:** the LCD shows **Not registered** and the card's UID, the buzzer beeps 3 times, and a "denied" entry goes to the website's log. The Authority Portal then lists that UID so it can be registered in one click, and the card works at the very next tap.
+- **No Wi-Fi / database:** the LCD shows **No connection, Try again** (so a network problem is never mistaken for an unregistered card).
 - **Registered:** the LCD shows **"Hi <name>, Camera on"**
 
 ### Step 2: camera feed opens, waste goes in

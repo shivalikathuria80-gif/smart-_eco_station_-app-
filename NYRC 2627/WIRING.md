@@ -131,14 +131,15 @@ and upload again. Afterwards press **RST** to run the sketch.
   pairs, so use two legs at **opposite corners** (diagonal). One goes to
   **GPIO 26**, the other to any **GND** pin. The code turns on the ESP32's own
   pull-up resistor, so the pin reads "pressed" only when the button joins it to GND.
-- At power-on the station loads the users registered on the website. Press the
-  button once to open the list, press again to go to the next name, and **hold
+- The station loads the users registered on the website at power-on, again
+  every time the button menu opens, and every minute, so new registrations
+  show up without re-uploading. Press the button once to open the list, press again to go to the next name, and **hold
   for 1 second** (you'll hear a beep) to choose. With no press for 20 s it goes back.
 - Serial Monitor alternative (115200 baud, "Newline"): type the user's number
   from the list and press Enter. `list` shows the numbers again, `reload` fetches
   new users from the website. You can also type a full ID like `A3 5F 8C 12`.
-- Without cards, register users on the Authority Portal with any short made-up
-  ID (e.g. `USER 01`); the station shows their names.
+- Without cards, register users on the Authority Portal with a made-up ID of
+  8 hex digits (e.g. `00 00 00 01`); the station shows their names.
 
 **ECHO voltage divider (both HC-SR04s):** ECHO outputs 5 V, but ESP32 pins
 tolerate 3.3 V. Use your **1 kΩ** and **2.2 kΩ** resistors, one pair per sensor

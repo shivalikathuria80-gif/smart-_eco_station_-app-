@@ -69,6 +69,7 @@ const unsigned long HOLD_TIME        = 1000;   // hold the button this long to c
 const unsigned long PICK_TIMEOUT     = 20000;  // no press for this long -> back to idle
 
 const int MAX_USERS = 30;                      // most users the button menu can list
+const unsigned long USERS_REFRESH_EVERY = 60000; // re-read /users so new registrations show up
 
 // ------------------------------------------------------------------- PINS --
 // (RC522 not used in this version; pins 5, 18, 19, 23, 27 stay free)
@@ -101,6 +102,7 @@ unsigned long lastWifiRetry = 0;
 String userIds[MAX_USERS];
 String userNames[MAX_USERS];
 int userCount = 0;
+unsigned long lastUsersLoad = 0;
 String serialLine;
 
 // ================================================================ HELPERS ==
@@ -121,6 +123,14 @@ void lcdIdle() {
   lcdShow("Wet:" + String(wetLevel) + "% Dry:" + String(dryLevel) + "%",
           (wetLevel >= FULL_ALERT_PERCENT || dryLevel >= FULL_ALERT_PERCENT)
             ? "!! BIN FULL !!" : "Press button");
+}
+
+// "41 9E FE 03" fits the 16-char LCD; longer 7/10-byte UIDs drop the spaces
+String lcdUid(const String& uid) {
+  if (uid.length() <= 16) return uid;
+  String c = uid;
+  c.replace(" ", "");
+  return c;
 }
 
 String timeNow() {
@@ -144,10 +154,14 @@ String jsonEscape(const String& s) {
 }
 
 // ============================================================== FIREBASE ==
+// true if the last firebase() call got an answer from the server (HTTP 200)
+bool firebaseOk = false;
+
 // method: GET / PUT / PATCH / POST. Returns response body, "" on failure.
 // query: optional extra URL options, e.g. "shallow=true"
 String firebase(const char* method, const String& path, const String& body = "",
                 const String& query = "") {
+  firebaseOk = false;
   if (WiFi.status() != WL_CONNECTED) return "";
   WiFiClientSecure client;
   client.setInsecure();                   // skip cert check (fine for a school project)
@@ -165,6 +179,7 @@ String firebase(const char* method, const String& path, const String& body = "",
     Serial.printf("[Firebase] %s %s -> %d %s\n", method, path.c_str(), code, resp.c_str());
     return "";
   }
+  firebaseOk = true;
   return resp;
 }
 
@@ -174,9 +189,16 @@ void pushLog(const char* type, const String& text) {
            "\",\"time\":\"" + timeNow() + "\"}");
 }
 
-// Returns the user's name, or "" if the card isn't registered
+// Looks the card up live in Firebase /users, so a card registered on the
+// website works at the next tap (no UIDs in this sketch, no re-upload).
+// Returns the user's name, or "" if the card isn't registered.
+// Check firebaseOk afterwards: false means "no connection", not "unknown card".
 String getUserName(const String& uid) {
   String r = firebase("GET", "users/" + urlEncode(uid) + "/name");
+  if (!firebaseOk) {                      // one retry: Wi-Fi/TLS hiccups happen
+    delay(300);
+    r = firebase("GET", "users/" + urlEncode(uid) + "/name");
+  }
   r.trim();
   if (r.length() < 2 || r == "null") return "";
   return r.substring(1, r.length() - 1);  // strip JSON quotes
@@ -193,25 +215,54 @@ long addPoints(const String& uid, int delta) {
   return r.toInt();
 }
 
-// Fills userIds[] / userNames[] from Firebase /users (the website's user list).
-// Returns how many users were loaded.
-int loadUsers() {
-  userCount = 0;
-  // shallow=true -> {"A3 5F 8C 12":true,"B1 22 ...":true}  (just the IDs)
-  String r = firebase("GET", "users", "", "shallow=true");
-  int i = 0;
-  while (userCount < MAX_USERS) {
-    int a = r.indexOf('"', i);
-    if (a < 0) break;
-    int b = r.indexOf('"', a + 1);
-    if (b < 0) break;
-    String id = r.substring(a + 1, b);
-    i = b + 1;
-    String name = getUserName(id);
-    userIds[userCount]   = id;
-    userNames[userCount] = name.length() ? name : id;
-    userCount++;
+// Reads one JSON string starting at s[i] == '"'. Moves i past the closing quote.
+String readJsonString(const String& s, int& i) {
+  String out;
+  for (i++; i < (int)s.length(); i++) {
+    char c = s[i];
+    if (c == '\\' && i + 1 < (int)s.length()) { out += s[++i]; continue; }
+    if (c == '"') { i++; break; }
+    out += c;
   }
+  return out;
+}
+
+// Fills userIds[] / userNames[] from Firebase /users (the website's user list)
+// with ONE request, so it is quick enough to refresh every time the menu opens.
+// /users looks like {"41 9E FE 03":{"name":"Asha","points":20},...}
+// Returns how many users were loaded. On a failed request the old list is kept.
+int loadUsers() {
+  lastUsersLoad = millis();                        // also on failure: don't retry every loop
+  String r = firebase("GET", "users");
+  if (!firebaseOk) {
+    Serial.println("[Users] could not load, keeping the old list");
+    return userCount;
+  }
+  int count = 0, depth = 0, i = 0;
+  String key;
+  while (i < (int)r.length() && count < MAX_USERS) {
+    char c = r[i];
+    if (c == '{') { depth++; i++; continue; }
+    if (c == '}') { depth--; i++; continue; }
+    if (c != '"') { i++; continue; }
+    String str = readJsonString(r, i);
+    while (i < (int)r.length() && r[i] == ' ') i++;
+    bool isKey = (i < (int)r.length() && r[i] == ':');
+    if (depth == 1 && isKey) {                     // a card UID
+      key = str;
+      userIds[count] = key;
+      userNames[count] = key;                      // until we see its name
+      count++;
+    } else if (depth == 2 && isKey && str == "name") {
+      i++;                                         // skip ':'
+      while (i < (int)r.length() && r[i] == ' ') i++;
+      if (i < (int)r.length() && r[i] == '"' && count > 0) {
+        String n = readJsonString(r, i);
+        if (n.length()) userNames[count - 1] = n;
+      }
+    }
+  }
+  userCount = count;
   Serial.printf("[Users] %d loaded from Firebase\n", userCount);
   return userCount;
 }
@@ -330,15 +381,15 @@ int waitPress(unsigned long timeout) {
 // Returns the chosen user ID, or "" if nobody was chosen.
 String pickUserWithButton() {
   while (buttonDown()) delay(10);                  // let go of the first press
+  // Re-read the list every time the menu opens, so a user registered on
+  // the website a moment ago is already in it.
+  lcdShow("Loading users", "Please wait...");
+  loadUsers();
   if (userCount == 0) {
-    lcdShow("Loading users", "Please wait...");
-    loadUsers();
-    if (userCount == 0) {
-      lcdShow("No users found", "Check WiFi/DB");
-      beep(3, 150);
-      delay(2500);
-      return "";
-    }
+    lcdShow("No users found", "Check WiFi/DB");
+    beep(3, 150);
+    delay(2500);
+    return "";
   }
   int idx = 0;
   while (true) {
@@ -443,6 +494,9 @@ void loop() {
     lcdIdle();
   }
 
+  // Keep the Serial Monitor list fresh too (new cards registered on the website)
+  if (millis() - lastUsersLoad > USERS_REFRESH_EVERY) loadUsers();
+
   // ---- 1. Wait for a user: Serial Monitor or push button
   String uid = pickUserFromSerial();
   if (uid != "") Serial.println("[Serial] " + uid);
@@ -458,11 +512,23 @@ void loop() {
   lcdShow("User picked", "Checking...");
   String name = getUserName(uid);
 
-  if (name == "") {
-    lcdShow("ACCESS DENIED", uid);
+  if (name == "" && !firebaseOk) {                  // couldn't ask the database
+    lcdShow("No connection", "Try again");
+    Serial.println("[Firebase] lookup failed - check WiFi / rules");
+    beep(2, 300);
+    delay(2500);
+    lcdIdle();
+    return;
+  }
+
+  if (name == "") {                                 // database says: not registered
+    // UID stays on screen so it can be typed into the website. The portal
+    // also lists it under "Cards tapped but not registered" from this log.
+    lcdShow("Not registered", lcdUid(uid));
+    Serial.println("[User] Not registered: " + uid + "  -> register it on the Authority Portal");
     beep(3, 150);
     pushLog("scan", "Unknown card " + uid + " denied at " + STATION_ID);
-    delay(2500);
+    delay(4000);
     lcdIdle();
     return;
   }
