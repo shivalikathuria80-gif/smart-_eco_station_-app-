@@ -11,7 +11,7 @@
  *    3. Every 2 seconds: takes a photo, runs your Edge Impulse model and
  *       prints every label with its confidence, plus the winner.
  *
- *  Open Serial Monitor at 115200 baud. Type into the box at the top and
+ *  Open Serial Monitor at 9600 baud. Type into the box at the top and
  *  press Enter:
  *      f   turn the flash LED on/off for photos (default ON)
  *      p   pause / resume the loop
@@ -182,7 +182,7 @@ void handleSerial() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(500);
   pinMode(FLASH_LED_PIN, OUTPUT);
   digitalWrite(FLASH_LED_PIN, LOW);
