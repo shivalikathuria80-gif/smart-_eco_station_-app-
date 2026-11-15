@@ -8,6 +8,7 @@ Sketches that talk to the same Firebase database as the website
 | `EcoStation_Main/` | ESP32 DevKit | **The one we use.** RFID, SG90 servo, 3× ultrasonic (2 bins + item on flap), moisture sensor (wet/dry), LCD, Wi-Fi → Firebase. Wiring: [WIRING.md](WIRING.md) |
 | `EcoStation_Main_Camera/` | ESP32 DevKit | Backup: same, but an ESP32-CAM decides wet/dry. Wiring: [WIRING_CAMERA.md](WIRING_CAMERA.md) |
 | `EcoStation_Cam/`  | ESP32-CAM (AI-Thinker) | Camera backup, **Option A:** classifies wet/dry on the CAM (Edge Impulse model) |
+| `EcoStation_Cam_Test/` | ESP32-CAM (AI-Thinker) | Stand-alone tester: checks the camera and prints the model's wet/dry result on the Serial Monitor. Steps: [HOW_TO_TEST.md](EcoStation_Cam_Test/HOW_TO_TEST.md) |
 | `EcoStation_Cam_Server/` | ESP32-CAM (AI-Thinker) | Camera backup, **Option B:** sends photo to `ClassifierServer`, relays WET/DRY |
 | `ClassifierServer/` | PC / Raspberry Pi | Flask server running a Teachable Machine model (`python app.py`) |
 
