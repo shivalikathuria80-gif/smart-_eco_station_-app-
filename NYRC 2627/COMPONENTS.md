@@ -8,16 +8,17 @@ Circuit diagram: [circuit_diagram.svg](circuit_diagram.svg) (open in any browser
 | # | Component | Qty | Purpose |
 |---|---|---|---|
 | 1 | ESP32 DevKit V1 (30/38-pin) | 1 | Main controller + Wi-Fi |
-| 2 | ESP32-CAM (AI-Thinker, OV2640) | 1 | Takes photo of waste |
-| 3 | ESP32-CAM-MB USB programmer board | 1 | To upload code to the ESP32-CAM |
+| 2 | ESP32-CAM (AI-Thinker, OV2640) | (1) | Camera backup build only |
+| 3 | ESP32-CAM-MB USB programmer board | (1) | Camera backup build only |
 | 4 | RC522 RFID reader module | 1 | Reads user cards |
 | 5 | RFID cards / key tags (13.56 MHz) | 5+ | One per user |
 | 9 | SG90 micro servo (plastic gear) | 1 | Tilts the flap to wet/dry bin (keep the flap light) |
-| 10 | HC-SR04 ultrasonic sensor | 2 | Measures fill level of each bin |
+| 10 | HC-SR04 ultrasonic sensor | 3 | Fill level of each bin + item on the flap |
+| 10a | Soil moisture sensor (resistive or capacitive, with AO pin) | 1 | On the flap: decides wet or dry |
 | 11 | 16×2 LCD with I2C module (PCF8574) | 1 | Shows messages and fill levels |
 | 12 | Active buzzer (5V) | 1 | Beeps for success / error |
-| 13 | Resistors 1 kΩ | 2 | Voltage divider for ECHO pins |
-| 14 | Resistors 2 kΩ (or 2.2 kΩ) | 2 | Voltage divider for ECHO pins |
+| 13 | Resistors 1 kΩ | 3 | Voltage divider for ECHO pins |
+| 14 | Resistors 2.2 kΩ | 3 | Voltage divider for ECHO pins |
 | 15 | Capacitor 1000 µF / 16V | 1 | Across servo 5V/GND, stops resets |
 
 Items 6–8 (12V solenoid lock, relay module, 1N4007 diode) were removed: this build has no solenoid.
@@ -62,14 +63,16 @@ Items 6–8 (12V solenoid lock, relay module, 1N4007 diode) were removed: this b
 | HC-SR04 DRY | TRIG | GPIO 25 |
 | HC-SR04 DRY | ECHO | GPIO 14 (through 1k/2.2k divider) |
 | Servo | Signal (orange) | GPIO 13 |
-| ESP32-CAM | U0T (GPIO 1) | GPIO 16 (RX2) |
-| ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) |
+| HC-SR04 ITEM (above flap) | TRIG | GPIO 26 |
+| HC-SR04 ITEM (above flap) | ECHO | GPIO 35 (through 1k/2.2k divider) |
+| Moisture sensor | AO | GPIO 34 |
+| Moisture sensor | VCC | GPIO 16 (switched on only while reading) |
 
 ### Power
 | From | To |
 |---|---|
 | 12V adapter + | LM2596 IN+ |
-| LM2596 OUT+ (5V) | ESP32 VIN, ESP32-CAM 5V, Servo red, both HC-SR04 VCC, LCD VCC |
+| LM2596 OUT+ (5V) | ESP32 VIN, Servo red, all three HC-SR04 VCC, LCD VCC |
 | All GNDs | Connected together (common ground) |
 
 ## 3. ECHO voltage divider (for each HC-SR04)

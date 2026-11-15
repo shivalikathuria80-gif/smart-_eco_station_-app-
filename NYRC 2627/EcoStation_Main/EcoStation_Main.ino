@@ -4,10 +4,17 @@
  * ============================================================================
  *  Flow:
  *    1. User taps RFID card (RC522)          -> checked against Firebase /users
- *    2. Valid card -> camera feed opens      -> LCD asks user to put waste in
- *    3. User puts waste on the flap          -> ESP32-CAM (UART) says "WET" or "DRY"
+ *    2. Valid card -> LCD asks user to put waste on the flap
+ *    3. Ultrasonic #3 above the flap sees the item land
+ *       Moisture sensor on the flap decides "WET" or "DRY"
  *    4. Servo tilts flap into the right bin  -> user gets reward points
  *    5. Two ultrasonic sensors measure fill  -> LCD + Firebase /bins (portal)
+ *
+ *  No camera in this version. The ESP32-CAM version is kept as
+ *  EcoStation_Main_Camera (wiring in WIRING_CAMERA.md).
+ *
+ *  KEEP THE FLAP EMPTY AND DRY WHEN YOU SWITCH ON: the station measures the
+ *  empty flap (height + dry moisture reading) at boot and compares to that.
  *
  *  Firebase paths (same as the website "smart eco station.html"):
  *    /users/{UID}          { name, points }
@@ -45,7 +52,16 @@ const char* STATION_ID    = "STATION-01";     // shows as the bin card title
 const char* STATION_ZONE  = "School Block A"; // shows under the bin card title
 
 const int   POINTS_PER_ITEM = 10;
-const float MIN_CONFIDENCE  = 0.60;  // below this the item is not sorted / not rewarded
+
+// Item detection (ultrasonic #3, pointing DOWN at the flap from above)
+const float ITEM_MIN_HEIGHT_CM = 1.5;  // item must be at least this much closer than the empty flap
+
+// Moisture sensor (on the flap, where the waste lands).
+// Both resistive and capacitive modules read LOWER when wet. At boot the
+// station reads the dry, empty flap; an item counts as WET if the reading
+// drops more than MOISTURE_DROP below that. Calibrate: see WIRING.md section 4.
+const int  MOISTURE_DROP  = 400;       // 0..4095 scale. Smaller = more items called WET
+const bool MOISTURE_DEBUG = true;      // print the reading every 2 s on Serial Monitor
 
 // Bin geometry (cm) - measure your own dustbins!
 const float BIN_DEPTH_CM = 40.0;  // sensor to bottom of empty bin
@@ -64,9 +80,8 @@ const int SERVO_MAX_US  = 2400;
 const int SERVO_STEP_MS = 8;     // ms per degree: slow sweep = gentler on plastic gears
 
 // Timings (ms)
-const unsigned long DEPOSIT_TIME     = 5000;   // time the user gets to put waste on the flap
-const unsigned long ITEM_SETTLE_TIME = 1500;   // wait for item to rest on flap
-const unsigned long CAM_TIMEOUT      = 8000;
+const unsigned long DEPOSIT_TIME     = 10000;  // time the user gets to put waste on the flap
+const unsigned long ITEM_SETTLE_TIME = 1500;   // wait for item to rest on flap / soak the probe
 const unsigned long BIN_UPLOAD_EVERY = 15000;
 const unsigned long WIFI_RETRY_EVERY = 10000;
 
@@ -83,20 +98,25 @@ const unsigned long WIFI_RETRY_EVERY = 10000;
 #define WET_ECHO_PIN   33
 #define DRY_TRIG_PIN   25
 #define DRY_ECHO_PIN   14
-// UART to ESP32-CAM
-#define CAM_RX_PIN     16        // <- CAM U0T (GPIO1)
-#define CAM_TX_PIN     17        // -> CAM U0R (GPIO3)
+// Ultrasonic #3: item on the flap (ECHO via 1k/2.2k divider too)
+#define ITEM_TRIG_PIN  26
+#define ITEM_ECHO_PIN  35        // input-only pin, fine for ECHO
+// Moisture sensor: AO must be on an ADC1 pin (ADC2 stops working with WiFi on)
+#define MOISTURE_PIN   34        // AO  (input-only, ADC1)
+#define MOISTURE_PWR   16        // VCC (powered only while reading: probes last longer)
 
 // ---------------------------------------------------------------- OBJECTS --
 MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
 LiquidCrystal_I2C lcd(LCD_ADDR, 16, 2);
 Servo flap;
-HardwareSerial CamSerial(2);
 
 int wetLevel = 0, dryLevel = 0;
 bool wetAlertSent = false, dryAlertSent = false;
 unsigned long lastBinUpload = 0;
 unsigned long lastWifiRetry = 0;
+float flapEmptyCm = 0;      // ultrasonic #3 to the empty flap, measured at boot
+int   moistureDry = 4095;   // moisture reading of the dry, empty flap, measured at boot
+unsigned long lastMoisturePrint = 0;
 
 // ================================================================ HELPERS ==
 void beep(int times, int ms = 80) {
@@ -224,7 +244,8 @@ void uploadBinLevels() {
 }
 
 // ============================================================ ULTRASONIC ==
-float readDistanceCm(int trig, int echo) {
+// fallback: value returned when no echo comes back
+float readDistanceCm(int trig, int echo, float fallback = BIN_DEPTH_CM) {
   float sum = 0; int good = 0;
   for (int i = 0; i < 5; i++) {
     digitalWrite(trig, LOW);  delayMicroseconds(2);
@@ -234,7 +255,7 @@ float readDistanceCm(int trig, int echo) {
     if (us > 0) { sum += us * 0.0343 / 2.0; good++; }
     delay(30);
   }
-  return good ? sum / good : BIN_DEPTH_CM;   // no echo -> treat as empty
+  return good ? sum / good : fallback;       // no echo -> treat as empty
 }
 
 int toPercent(float distance) {
@@ -259,33 +280,47 @@ void updateBinLevels() {
   } else if (dryLevel < FULL_ALERT_PERCENT - 20) dryAlertSent = false;
 }
 
-// ============================================================== ESP32-CAM ==
-// Sends "CAPTURE", expects "RESULT:WET:0.93", "RESULT:DRY:0.88" or
-// "RESULT:NONE:0.97" (nothing on the flap).
-// Returns "WET", "DRY", "NONE" (empty / not sure) or "" on timeout/error.
-String classifyWaste() {
-  while (CamSerial.available()) CamSerial.read();   // flush old data
-  CamSerial.println("CAPTURE");
+// ===================================================== ITEM + MOISTURE ==
+// Distance from ultrasonic #3 to whatever is on the flap
+float flapDistanceCm() {
+  return readDistanceCm(ITEM_TRIG_PIN, ITEM_ECHO_PIN, flapEmptyCm);
+}
+
+bool itemOnFlap() {
+  return flapDistanceCm() < flapEmptyCm - ITEM_MIN_HEIGHT_CM;
+}
+
+// Average of 16 readings, 0 (very wet) .. 4095 (bone dry)
+int readMoisture() {
+  digitalWrite(MOISTURE_PWR, HIGH);
+  delay(100);                                    // let the module settle
+  long sum = 0;
+  for (int i = 0; i < 16; i++) { sum += analogRead(MOISTURE_PIN); delay(5); }
+  digitalWrite(MOISTURE_PWR, LOW);
+  return sum / 16;
+}
+
+// Waits up to DEPOSIT_TIME for an item, then decides.
+// Returns "WET", "DRY" or "NONE" (nothing put on the flap).
+String detectWaste(int& moisture) {
   unsigned long start = millis();
-  String line;
-  while (millis() - start < CAM_TIMEOUT) {
-    if (!CamSerial.available()) { delay(5); continue; }
-    char c = CamSerial.read();
-    if (c == '\n') {
-      line.trim();
-      Serial.println("[CAM] " + line);
-      if (line.startsWith("RESULT:")) {
-        int c2 = line.indexOf(':', 7);
-        String label = line.substring(7, c2 < 0 ? line.length() : c2);
-        float conf = c2 < 0 ? 1.0 : line.substring(c2 + 1).toFloat();
-        if ((label == "WET" || label == "DRY") && conf >= MIN_CONFIDENCE) return label;
-        return "NONE";
-      }
-      if (line.startsWith("ERROR:")) return "";
-      line = "";                                    // ignore debug lines
-    } else line += c;
+  int shown = -1;
+  bool seen = false;
+  while (millis() - start < DEPOSIT_TIME) {
+    int left = (DEPOSIT_TIME - (millis() - start) + 999) / 1000;
+    if (left != shown) { lcdShow("Put waste on", "the flap... " + String(left) + "s"); shown = left; }
+    if (itemOnFlap()) { seen = true; break; }
   }
-  return "";
+  if (!seen) return "NONE";
+
+  lcdShow("Item detected", "Checking...");
+  delay(ITEM_SETTLE_TIME);
+  if (!itemOnFlap()) return "NONE";              // taken back off
+
+  moisture = readMoisture();
+  Serial.printf("[Moisture] item=%d dry-flap=%d wet-below=%d\n",
+                moisture, moistureDry, moistureDry - MOISTURE_DROP);
+  return (moisture < moistureDry - MOISTURE_DROP) ? "WET" : "DRY";
 }
 
 int flapAngle = SERVO_CENTER;
@@ -311,11 +346,13 @@ void sortItem(bool wet) {
 // ================================================================= SETUP ==
 void setup() {
   Serial.begin(115200);
-  CamSerial.begin(115200, SERIAL_8N1, CAM_RX_PIN, CAM_TX_PIN);
 
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(WET_TRIG_PIN, OUTPUT); pinMode(WET_ECHO_PIN, INPUT);
   pinMode(DRY_TRIG_PIN, OUTPUT); pinMode(DRY_ECHO_PIN, INPUT);
+  pinMode(ITEM_TRIG_PIN, OUTPUT); pinMode(ITEM_ECHO_PIN, INPUT);
+  pinMode(MOISTURE_PWR, OUTPUT); digitalWrite(MOISTURE_PWR, LOW);
+  analogSetPinAttenuation(MOISTURE_PIN, ADC_11db);  // full 0..3.3 V range
 
   lcd.init(); lcd.backlight();
   lcdShow("Smart Eco", "Station booting");
@@ -327,6 +364,19 @@ void setup() {
 
   SPI.begin();
   rfid.PCD_Init();
+
+  // Empty-flap reference: height for ultrasonic #3, dry value for moisture
+  lcdShow("Keep flap empty", "Calibrating...");
+  delay(1000);
+  flapEmptyCm = readDistanceCm(ITEM_TRIG_PIN, ITEM_ECHO_PIN, 0);
+  moistureDry = readMoisture();
+  Serial.printf("[Flap] empty=%.1f cm  moisture dry=%d\n", flapEmptyCm, moistureDry);
+  if (flapEmptyCm < 3) {                         // no echo or sensor too close
+    lcdShow("Item sensor?", "Check US #3");
+    Serial.println("[Flap] ultrasonic #3 gave no reading - check TRIG 26 / ECHO 35");
+    beep(3, 300);
+    delay(3000);
+  }
 
   lcdShow("Connecting WiFi", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -370,6 +420,12 @@ void loop() {
     lcdIdle();
   }
 
+  if (MOISTURE_DEBUG && millis() - lastMoisturePrint > 2000) {
+    Serial.printf("[Moisture] now=%d dry-flap=%d (WET below %d)  flap=%.1f cm\n",
+                  readMoisture(), moistureDry, moistureDry - MOISTURE_DROP, flapDistanceCm());
+    lastMoisturePrint = millis();
+  }
+
   // ---- 1. Wait for a card
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
   String uid = readUid();
@@ -401,27 +457,16 @@ void loop() {
     return;
   }
 
-  // ---- 2. Camera feed opens, user puts waste on the flap (no lock)
-  lcdShow("Hi " + name, "Camera on");
+  // ---- 2. User puts waste on the flap
+  lcdShow("Hi " + name, "Put waste in");
   beep(1);
   pushLog("scan", name + " (" + uid + ") scanned at " + STATION_ID);
-  for (int s = DEPOSIT_TIME / 1000; s > 0; s--) {
-    lcdShow("Put waste on", "the flap... " + String(s) + "s");
-    delay(1000);
-  }
+  delay(1200);
 
-  // ---- 3. Detect the waste
-  lcdShow("Scanning waste", "Please wait...");
-  delay(ITEM_SETTLE_TIME);
-  String type = classifyWaste();
-  if (type == "") {
-    lcdShow("Camera error", "Try again");
-    beep(2, 200);
-    delay(2000);
-    lcdIdle();
-    return;
-  }
-  if (type == "NONE") {                            // empty flap or unsure -> no points
+  // ---- 3. Detect the waste: ultrasonic #3 sees it, moisture decides
+  int moisture = -1;
+  String type = detectWaste(moisture);
+  if (type == "NONE") {                            // nothing put on the flap -> no points
     lcdShow("No waste seen", "No points given");
     beep(2, 200);
     pushLog("scan", name + " (" + uid + ") - no item detected, no points");

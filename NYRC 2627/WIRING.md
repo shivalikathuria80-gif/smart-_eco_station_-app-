@@ -1,16 +1,11 @@
-# Smart Eco Station: Final Wiring
+# Smart Eco Station: Wiring (moisture-sensor build)
 
-Every connection below is taken from the sketches in this repo. Where the code and
-[COMPONENTS.md](COMPONENTS.md) agree, the pin is listed once. Values come from
-`EcoStation_Main.ino` and `EcoStation_Cam.ino`.
+Every pin below comes from `EcoStation_Main/EcoStation_Main.ino`. This build has
+**one ESP32 DevKit and no camera**. A third ultrasonic sensor above the flap sees
+when an item is put down, and a moisture sensor on the flap decides wet or dry.
 
-Two ESP32s and one ESP32-CAM run on the same 5 V rail, sharing one ground.
-The ESP32-CAM runs **`EcoStation_Cam`** (Option A): your Edge Impulse model
-(`shivali-project-2`) runs on the camera itself, so no laptop is needed. Section 5a
-shows how to get and install the Edge Impulse library.
-
-`EcoStation_Cam_Server` (Option B, Teachable Machine on a laptop) is kept in the
-repo only as a backup. Do not flash both. The wiring is identical either way.
+The camera build is kept as a backup: `EcoStation_Main_Camera` + `EcoStation_Cam`,
+wired as in [WIRING_CAMERA.md](WIRING_CAMERA.md).
 
 ---
 
@@ -20,10 +15,10 @@ repo only as a backup. Do not flash both. The wiring is identical either way.
 12V 2A adapter ────► LM2596 IN+ ─────────────► LM2596 OUT+ (5V)
                                                      │
                                                      ├──► ESP32 DevKit VIN
-                                                     ├──► ESP32-CAM 5V
-                                                     ├──► Servo red (5V)
-                                                     ├──► HC-SR04 #1 VCC
-                                                     ├──► HC-SR04 #2 VCC
+                                                     ├──► Servo SG90 red (5V)
+                                                     ├──► HC-SR04 WET bin VCC
+                                                     ├──► HC-SR04 DRY bin VCC
+                                                     ├──► HC-SR04 ITEM (flap) VCC
                                                      └──► LCD VCC
 GND of every module ────► common ground (all GNDs tied together)
 ```
@@ -32,72 +27,39 @@ GND of every module ────► common ground (all GNDs tied together)
 |---|---|---|
 | 12V adapter + | LM2596 IN+ | |
 | 12V adapter − | LM2596 IN−, common GND | |
-| LM2596 OUT+ | ESP32 DevKit VIN, ESP32-CAM 5V, servo red, both HC-SR04 VCC, LCD VCC | set to **5.0 V** before connecting anything |
-| 1000 µF 16V capacitor | servo red / servo GND | stops brown-outs when the servo moves |
+| LM2596 OUT+ | ESP32 VIN, servo red, all three HC-SR04 VCC, LCD VCC | set to **5.0 V** before connecting anything |
+| 1000 µF 16V capacitor | servo red / servo GND | stops brown-outs when the servo moves (long leg to 5V) |
 
-**Before powering up:** turn the LM2596 trim screw until the output reads 5.0 V
-(the voltmeter version makes this easy).
+The moisture sensor is **not** on the 5 V rail. It takes power from GPIO 16 (see section 2).
+
+**Before powering up:** turn the LM2596 trim screw until the output reads 5.0 V,
+with nothing connected to OUT+ yet.
 
 ### 1a. The four LM2596 terminals
-
-The buck converter has four solder points. Each one has exactly one job:
 
 | LM2596 pad | Connect to | What it is |
 |---|---|---|
 | **IN+** | 12 V adapter + (centre pin of the barrel plug) | 12 V in |
 | **IN−** | 12 V adapter − (outer sleeve of the barrel plug) | 0 V in |
-| **OUT+** | the 5 V rail: ESP32 VIN, ESP32-CAM 5V, servo red, both HC-SR04 VCC, LCD VCC | 5 V out |
+| **OUT+** | the 5 V rail: ESP32 VIN, servo red, all three HC-SR04 VCC, LCD VCC | 5 V out |
 | **OUT−** | the common GND bus: GND of every module | 0 V out |
 
-IN− and OUT− are joined on the board, so all grounds end up the same. A
-breadboard's two power rails work well as the 5 V rail and GND bus: OUT+ to the
+A breadboard's two power rails work well as the 5 V rail and GND bus: OUT+ to the
 red rail, OUT− to the blue rail, and every module's VCC/GND taken from there.
 
 ### 1b. Getting the adapter into the LM2596
 
-The adapter ends in a barrel plug, so it can't go straight into the pads.
+- **Easiest:** a female DC barrel jack with screw terminals (5.5 × 2.1 mm). Run a
+  wire from the jack's **+** screw to IN+ and from its **−** screw to IN−.
+- **Alternative:** cut the plug off and strip the two wires. Confirm which is +
+  with a multimeter before connecting.
 
-- **Easiest:** a female DC barrel jack with screw terminals (5.5 × 2.1 mm). Plug the
-  adapter in, then run a wire from the jack's **+** screw to IN+ and from its
-  **−** screw to IN−.
-- **Alternative:** cut the plug off and strip the two wires. The striped or
-  marked wire is usually −, but confirm with a multimeter before connecting.
-
-The LM2596 has **no reverse-polarity protection**. Before touching IN+/IN−,
-plug in the adapter and check with a multimeter that the wire going to IN+ reads
-+12 V against the one going to IN−. Then set the output to 5.0 V with nothing
-on OUT+ yet.
+The LM2596 has **no reverse-polarity protection**. Check with a multimeter that
+the wire going to IN+ reads +12 V against the one going to IN−.
 
 ---
 
-## 1c. ESP32-CAM-MB programmer: only for uploading
-
-The ESP32-CAM-MB is the small board with a USB port and two buttons that the
-ESP32-CAM plugs into. It is **not** part of the station wiring. It replaces a
-USB-to-serial adapter for uploading code.
-
-| When | Setup |
-|---|---|
-| Uploading code | ESP32-CAM sits on the MB board, USB cable to the laptop. No other wires on the CAM. |
-| Running the station | ESP32-CAM taken **off** the MB board and wired as in section 3: 5V and GND from the LM2596, U0T/U0R to the main ESP32. |
-
-Why it comes off:
-
-- The MB board's USB chip uses the same U0T/U0R pins as the link to the main
-  ESP32, so the two would talk over each other.
-- While seated on the MB board the CAM's pins are covered, so there is nowhere
-  to land the 5V, GND and UART wires.
-- Powering the CAM from USB and from the LM2596 at the same time puts two
-  supplies on one rail. Use one or the other.
-
-**Upload steps:** seat the CAM on the MB board (camera side up), plug in USB,
-select **AI Thinker ESP32-CAM** in the Arduino IDE, and upload. If it fails with
-"waiting for download", hold **IO0** on the MB board, tap **RST**, release IO0,
-and upload again. Afterwards press **RST** to run the sketch.
-
----
-
-## 2. Main ESP32 (EcoStation_Main, ESP32 DevKit V1)
+## 2. Main ESP32 (ESP32 DevKit V1)
 
 | Module | Module pin | ESP32 pin | Code reference |
 |---|---|---|---|
@@ -110,43 +72,36 @@ and upload again. Afterwards press **RST** to run the sketch.
 | LCD 16×2 I2C | SDA | GPIO 21 | I2C, address `0x27` |
 | LCD 16×2 I2C | SCL | GPIO 22 | I2C |
 | Servo SG90 | Signal (orange) | GPIO 13 | `SERVO_PIN` |
+| Servo SG90 | Red / Brown | 5 V rail / GND | |
 | Buzzer | + | GPIO 4 | `BUZZER_PIN` |
-| Push button (button version only) | one leg | GPIO 26 | `BUTTON_PIN` |
-| Push button | opposite corner leg | GND | (no resistor needed) |
 | HC-SR04 WET bin | TRIG | GPIO 32 | `WET_TRIG_PIN` |
 | HC-SR04 WET bin | ECHO | GPIO 33 via 1 kΩ / 2.2 kΩ divider | `WET_ECHO_PIN` |
 | HC-SR04 DRY bin | TRIG | GPIO 25 | `DRY_TRIG_PIN` |
 | HC-SR04 DRY bin | ECHO | GPIO 14 via 1 kΩ / 2.2 kΩ divider | `DRY_ECHO_PIN` |
-| ESP32-CAM | U0T (GPIO 1) | GPIO 16 (RX2) | `CAM_RX_PIN` |
-| ESP32-CAM | U0R (GPIO 3) | GPIO 17 (TX2) | `CAM_TX_PIN` |
-| Buzzer, LCD, HC-SR04, servo | GND | any GND pin | common ground |
+| **HC-SR04 ITEM (above flap)** | TRIG | **GPIO 26** | `ITEM_TRIG_PIN` |
+| **HC-SR04 ITEM (above flap)** | ECHO | **GPIO 35** via 1 kΩ / 2.2 kΩ divider | `ITEM_ECHO_PIN` |
+| **Moisture sensor** | AO (analog out) | **GPIO 34** | `MOISTURE_PIN` |
+| **Moisture sensor** | VCC | **GPIO 16** | `MOISTURE_PWR` |
+| **Moisture sensor** | GND | GND | |
+| **Moisture sensor** | DO (digital out) | not connected | |
+| Everything | GND | any GND pin | common ground |
 
-**Two main sketches, pick one to upload:**
-- `EcoStation_Main` (card version): users tap an RFID card on the RC522. Use this when the reader works.
-- `EcoStation_Main_Button` (button version): no RFID. Users are picked with a push
-  button on GPIO 26 or from the Serial Monitor. Use this if the reader fails.
-  Everything else (wiring, Firebase, camera, servo, points) is the same in both.
+Notes on the new pins:
+- **GPIO 34 and 35 are input-only.** That's fine: one only reads ECHO, the other
+  only reads AO.
+- The moisture AO must be on **GPIO 32–39 (ADC1)**. The other analog pins (ADC2)
+  stop working while Wi-Fi is on. GPIO 34 is used.
+- **Moisture VCC goes to GPIO 16, not 3V3.** The code switches the sensor on for a
+  tenth of a second only while it reads, so the probe forks corrode much more
+  slowly. It also keeps AO at 3.3 V or less, which is safe for the ESP32. (Wiring
+  VCC to 3V3 also works, but the probes wear out faster.)
+- GPIO 16 and 17 were the camera link. They are free in this build.
 
-- Wiring is two wires and no resistor. A 4-leg button has its legs joined in
-  pairs, so use two legs at **opposite corners** (diagonal). One goes to
-  **GPIO 26**, the other to any **GND** pin. The code turns on the ESP32's own
-  pull-up resistor, so the pin reads "pressed" only when the button joins it to GND.
-- The station loads the users registered on the website at power-on, again
-  every time the button menu opens, and every minute, so new registrations
-  show up without re-uploading. Press the button once to open the list, press again to go to the next name, and **hold
-  for 1 second** (you'll hear a beep) to choose. With no press for 20 s it goes back.
-- Serial Monitor alternative (115200 baud, "Newline"): type the user's number
-  from the list and press Enter. `list` shows the numbers again, `reload` fetches
-  new users from the website. You can also type a full ID like `A3 5F 8C 12`.
-- Without cards, register users on the Authority Portal with a made-up ID of
-  8 hex digits (e.g. `00 00 00 01`); the station shows their names.
-
-**ECHO voltage divider (both HC-SR04s):** ECHO outputs 5 V, but ESP32 pins
-tolerate 3.3 V. Use your **1 kΩ** and **2.2 kΩ** resistors, one pair per sensor
-(so 2 × 1 kΩ and 2 × 2.2 kΩ in total).
+**ECHO voltage divider (all three HC-SR04s):** ECHO outputs 5 V, but ESP32 pins
+take 3.3 V. Use one 1 kΩ + one 2.2 kΩ per sensor (3 × 1 kΩ and 3 × 2.2 kΩ in total).
 
 ```
-HC-SR04 ECHO ──[ 1 kΩ ]──┬── ESP32 GPIO (33 or 14)
+HC-SR04 ECHO ──[ 1 kΩ ]──┬── ESP32 GPIO (33, 14 or 35)
                           │
                       [ 2.2 kΩ ]
                           │
@@ -154,169 +109,84 @@ HC-SR04 ECHO ──[ 1 kΩ ]──┬── ESP32 GPIO (33 or 14)
 ```
 
 - The **1 kΩ** goes between ECHO and the ESP32 pin. The **2.2 kΩ** goes from the
-  ESP32 pin to GND. Don't swap them: the other way round gives only 1.6 V, which
-  the ESP32 can't read.
-- The pin then gets 5 V × 2.2 / (1 + 2.2) ≈ **3.4 V**, which the ESP32 handles fine.
+  ESP32 pin to GND. Don't swap them.
 - Colour bands: 1 kΩ is **brown-black-red**, 2.2 kΩ is **red-red-red**.
 
 ---
 
-## 3. ESP32-CAM (AI-Thinker, OV2640 camera)
+## 3. Where the two new sensors go
 
-The camera ribbon plugs into the board's connector, latch closed. The pins below
-are fixed on the AI-Thinker board, so nothing needs wiring except the UART link.
+```
+          HC-SR04 ITEM  (facing straight DOWN, 10-20 cm above the flap)
+               ||
+               \/
+   ┌──────────────────────────┐
+   │   waste lands here        │  <- flap (on the SG90)
+   │   ═══ moisture probe ═══  │     probe forks lie flat on the flap,
+   └────────────┬─────────────┘     facing up, where the waste lands
+             SG90 pivot
+     WET bin  ◄──   ──►  DRY bin
+```
 
-### Camera (on-board, fixed)
-
-| Signal | GPIO |
-|---|---|
-| Data D0–D7 | 5, 18, 19, 21, 36, 39, 34, 35 |
-| XCLK | 0 |
-| PCLK | 22 |
-| VSYNC | 25 |
-| HREF | 23 |
-| SIOD (SCCB SDA) | 26 |
-| SIOC (SCCB SCL) | 27 |
-| PWDN | 32 |
-| RESET | not used (−1) |
-
-### Other on-board items used by the sketch
-
-| Item | GPIO | Notes |
-|---|---|---|
-| Flash LED | 4 | flash on during capture |
-| Serial to main ESP32 | U0T (1) and U0R (3) | 115200 baud |
-
-### UART link to main ESP32
-
-| ESP32-CAM | Main ESP32 | Notes |
-|---|---|---|
-| U0T (GPIO 1) | GPIO 16 (RX2) | camera → main |
-| U0R (GPIO 3) | GPIO 17 (TX2) | main → camera |
-| GND | GND | required |
-
-**Flashing the CAM:** use the ESP32-CAM-MB USB programmer. Unplug the two UART
-wires (GPIO 1 and GPIO 3) before uploading, then plug them back in. The CAM uses
-the same pins for upload and for the link.
+- **ITEM ultrasonic:** mount it above the middle of the flap, pointing straight
+  down at it, at least 10 cm away (the HC-SR04 can't measure closer than about
+  3 cm). Nothing else should be in its path.
+- **Moisture probe:** glue or tape the probe board flat on the flap, forks facing
+  up, in the spot where people put the waste. The waste has to touch the forks.
+  Keep the wires loose enough for the flap to tilt both ways.
+- Keep the flap light (thin plastic or card). The SG90 is a small servo.
 
 ---
 
-## 4. Full signal path for one item
+## 4. Calibrating the moisture sensor (2 minutes)
 
-1. User taps RC522 card → main ESP32 checks Firebase `/users`.
-2. Valid card → camera feed opens and the LCD counts down 5 s (`DEPOSIT_TIME`).
-3. User puts waste on the flap. There is no lock (the solenoid was removed).
-4. Main ESP32 sends `CAPTURE` on GPIO 17 → CAM receives on GPIO 1.
-5. CAM flashes the LED, takes a photo and first compares it with the photo of
-   the empty flap it took at power-on. If they look the same, it replies
-   `RESULT:NONE`. Otherwise it runs the model. The reply goes out on GPIO 3 →
-   main receives on GPIO 16 as `RESULT:WET:0.93`, `RESULT:DRY:0.88` or
-   `RESULT:NONE:1.00`.
-6. Main ESP32 sorts it: the SG90 servo on GPIO 13 sweeps the flap slowly to
-   30° (WET) or 150° (DRY) and back, or stays centered for `NONE`. If it
-   tilts the wrong way, swap `SERVO_WET` and `SERVO_DRY` in the sketch.
-7. Main ESP32 awards points only for WET or DRY with confidence ≥
-   `MIN_CONFIDENCE` (0.60), and writes to Firebase. `NONE` or a low-confidence
-   guess shows "No waste seen / No points given".
-8. Ultrasonic sensors on GPIO 32/33 and 25/14 measure fill level; the LCD shows
-   it and an alert fires at 90 %.
+At power-on the station reads the **empty, dry flap**. An item counts as **WET**
+when the reading drops more than `MOISTURE_DROP` (400) below that dry value. Both
+the resistive (two-fork) and capacitive sensors read lower when wet.
 
----
+1. **Switch on with the flap empty and dry.** The LCD shows "Keep flap empty /
+   Calibrating...".
+2. Open **Tools > Serial Monitor** at **115200** baud. Every 2 s it prints a line
+   like:
+   `[Moisture] now=4095 dry-flap=4095 (WET below 3695)  flap=15.2 cm`
+3. Put a **dry** item (paper, plastic) on the probe. Note `now`.
+4. Put a **wet** item (fruit peel, wet tissue) on the probe. Note `now`.
+5. You want the "WET below" number to sit between those two values.
+   - Wet items show as DRY? Make `MOISTURE_DROP` **smaller** (e.g. 200).
+   - Dry items show as WET? Make `MOISTURE_DROP` **bigger** (e.g. 800).
+   Change it near the top of the sketch and upload again.
+6. Also check `flap=`. It should drop by at least 1.5 cm when an item is on the
+   flap. If small items aren't noticed, lower `ITEM_MIN_HEIGHT_CM`.
 
-## 5. Checklist before first power-on
+When you're done, you can set `MOISTURE_DEBUG = false` to stop the prints.
 
-- [ ] Adapter polarity checked with a multimeter before connecting to LM2596 IN+/IN−.
-- [ ] LM2596 output set to **5.0 V** with nothing else connected.
-- [ ] ESP32-CAM taken off the MB programmer and wired to the 5 V rail and the main ESP32.
-- [ ] RC522 is on **3V3**, not 5 V.
-- [ ] Both HC-SR04 ECHO lines go through the **1 kΩ / 2.2 kΩ** divider (1 kΩ on the ECHO side).
-- [ ] All GNDs are common.
-- [ ] CAM UART wires are **unplugged** while flashing the CAM.
-- [ ] Edge Impulse library installed in the Arduino IDE (section 5a). `EcoStation_Cam`
-      already has the matching line `#include <shivali-project-2_inferencing.h>`.
-- [ ] **The flap is empty when you switch the station on.** The CAM photographs the
-      empty flap at power-on and uses it to spot "nothing there" (section 5b).
+**Wipe the probe** after a very wet item. A wet probe makes the next item read wet too.
 
 ---
 
-## 5a. Getting and installing the Edge Impulse library
+## 5. How it runs
 
-The library is not on the internet for download. Edge Impulse builds it from
-**your own trained project**, so it only exists in your account.
-
-**Get the .zip**
-
-1. Go to [studio.edgeimpulse.com](https://studio.edgeimpulse.com) and sign in.
-2. Open the project **shivali-project-2**.
-3. In the left menu click **Deployment**.
-4. Under *Deployment target*, search for and pick **Arduino library**.
-5. Leave *Quantized (int8)* selected (it's smaller and faster on the ESP32-CAM).
-6. Click **Build** at the bottom and wait about a minute. The .zip downloads by
-   itself to your **Downloads** folder, named like
-   `ei-shivali-project-2-arduino-1.0.3-impulse-#1.zip`.
-
-   If nothing seems to download, check Chrome's downloads list (Ctrl+J). If you
-   click Build several times you get several copies; use the newest one.
-
-**Install it in the Arduino IDE**
-
-1. Open the Arduino IDE.
-2. Click **Sketch > Include Library > Add .ZIP Library...**
-3. Pick the .zip from Downloads and click **Open**. Don't unzip it first.
-4. Check it worked: **File > Examples** should now show **shivali-project-2_inferencing**.
-
-If the IDE says a library with that name already exists, delete the old folder
-`Documents\Arduino\libraries\shivali-project-2_inferencing` and add the .zip again.
-
-**Upload the camera sketch**
-
-1. Open `EcoStation_Cam/EcoStation_Cam.ino`.
-2. **Tools > Board > esp32 > AI Thinker ESP32-CAM**.
-3. Seat the CAM on the MB programmer, plug in USB, pick its COM port, then click
-   **Upload**. The first compile takes several minutes because the model is big.
-4. Open **Tools > Serial Monitor** at 115200. You should see
-   `Empty flap photo saved` and then `CAM READY`.
-
-## 5b. How an empty flap is stopped from earning points
-
-Your model only knows `wet` and `dry`, so on its own it would call an empty flap
-one of those. Two checks stop that:
-
-1. **Empty-flap photo (built in, nothing to train).** At power-on the CAM takes
-   a photo of the empty flap. For every scan it measures how different the new
-   photo is and prints it as `diff from empty flap: 4.2 (limit 12.0)`. Below the
-   limit it sends `RESULT:NONE`, and the main ESP32 gives no points.
-2. **Confidence check (main ESP32).** WET/DRY with less than 60 % confidence is
-   also treated as `NONE`.
-
-**Tune the limit once:** with the Serial Monitor open, scan with an empty flap a
-few times and note the diff (e.g. 3 to 6). Then scan with a small item, like a
-folded paper (e.g. 20 or more). Set `EMPTY_DIFF_LIMIT` near the top of
-`EcoStation_Cam.ino` to a number in between and upload again.
-
-Keep the lighting steady and don't move the camera after power-on. If you
-move it, press **RST** on the CAM with the flap empty to take a new photo.
-
-**Optional, if you have time:** in Edge Impulse add a third label called
-`empty` with about 100 photos of the bare flap, retrain, and rebuild the library.
-The sketch already understands an `empty` label and will send `RESULT:NONE` for it.
+1. User taps a card. The station checks Firebase `/users` (section on card
+   registration in [README.md](README.md)).
+2. Registered: LCD shows "Hi <name>, Put waste in", then counts down **10 s**
+   (`DEPOSIT_TIME`): "Put waste on the flap...".
+3. The ITEM ultrasonic sees the item land. After 1.5 s (`ITEM_SETTLE_TIME`) the
+   station checks that the item is still there and reads the moisture sensor.
+4. Wet or dry: the SG90 sweeps the flap to 30° (WET) or 150° (DRY) and back to
+   90°. If it tilts the wrong way, swap `SERVO_WET` and `SERVO_DRY`.
+5. +10 points to the user in Firebase. The LCD shows the new total.
+6. Nothing put down within 10 s: "No waste seen / No points given".
+7. The bin ultrasonics (GPIO 32/33 and 25/14) report fill levels to the LCD and
+   the Authority Portal every 15 s and after every item.
 
 ---
 
-## 6. Build status (arduino-cli 1.5.1, esp32 core 3.3.12)
+## 6. Checklist before switching on
 
-| Sketch | Board | Result |
-|---|---|---|
-| `EcoStation_Cam` | `esp32:esp32:esp32cam` | **compiles** with `shivali-project-2_inferencing` 1.0.3 (29 % flash, 14 % RAM) |
-| `EcoStation_Main` | `esp32:esp32:esp32` | compiles (83 % flash); unchanged |
-| `EcoStation_Cam_Server` | `esp32:esp32:esp32cam` | backup only, not used |
-
-## 7. Known gaps
-
-- **Fixed: empty flap earning points.** `EcoStation_Cam` now sends `RESULT:NONE`
-  when the photo matches the empty flap, or when an `empty` label wins. The main
-  ESP32 gives no points for `NONE`.
-- **The empty-flap check needs the flap empty at power-on** and steady lighting.
-  Press RST on the CAM to retake the photo if things change.
-- **Camera model is RGB only.** `getData()` packs three bytes per pixel. Keep the
-  Edge Impulse impulse on RGB (yours is).
+- [ ] LM2596 output set to 5.0 V with nothing connected.
+- [ ] RC522 on **3V3**, not 5 V.
+- [ ] All three HC-SR04 ECHO wires go through their 1 kΩ / 2.2 kΩ dividers.
+- [ ] Moisture AO on **GPIO 34**, VCC on **GPIO 16**, GND on GND. DO left empty.
+- [ ] 1000 µF capacitor across the servo's 5 V and GND (long leg to 5 V).
+- [ ] Every GND is connected together.
+- [ ] **The flap is empty and dry when you switch on.**
