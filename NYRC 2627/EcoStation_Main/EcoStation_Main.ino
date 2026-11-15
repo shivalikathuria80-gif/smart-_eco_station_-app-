@@ -112,6 +112,14 @@ void lcdIdle() {
             ? "!! BIN FULL !!" : "Tap your card");
 }
 
+// "41 9E FE 03" fits the 16-char LCD; longer 7/10-byte UIDs drop the spaces
+String lcdUid(const String& uid) {
+  if (uid.length() <= 16) return uid;
+  String c = uid;
+  c.replace(" ", "");
+  return c;
+}
+
 String timeNow() {
   struct tm t;
   if (!getLocalTime(&t, 100)) return "--:--:--";
@@ -145,8 +153,12 @@ String jsonEscape(const String& s) {
 }
 
 // ============================================================== FIREBASE ==
+// true if the last firebase() call got an answer from the server (HTTP 200)
+bool firebaseOk = false;
+
 // method: GET / PUT / PATCH / POST. Returns response body, "" on failure.
 String firebase(const char* method, const String& path, const String& body = "") {
+  firebaseOk = false;
   if (WiFi.status() != WL_CONNECTED) return "";
   WiFiClientSecure client;
   client.setInsecure();                   // skip cert check (fine for a school project)
@@ -162,6 +174,7 @@ String firebase(const char* method, const String& path, const String& body = "")
     Serial.printf("[Firebase] %s %s -> %d %s\n", method, path.c_str(), code, resp.c_str());
     return "";
   }
+  firebaseOk = true;
   return resp;
 }
 
@@ -171,9 +184,16 @@ void pushLog(const char* type, const String& text) {
            "\",\"time\":\"" + timeNow() + "\"}");
 }
 
-// Returns the user's name, or "" if the card isn't registered
+// Looks the card up live in Firebase /users, so a card registered on the
+// website works at the next tap (no UIDs in this sketch, no re-upload).
+// Returns the user's name, or "" if the card isn't registered.
+// Check firebaseOk afterwards: false means "no connection", not "unknown card".
 String getUserName(const String& uid) {
   String r = firebase("GET", "users/" + urlEncode(uid) + "/name");
+  if (!firebaseOk) {                      // one retry: Wi-Fi/TLS hiccups happen
+    delay(300);
+    r = firebase("GET", "users/" + urlEncode(uid) + "/name");
+  }
   r.trim();
   if (r.length() < 2 || r == "null") return "";
   return r.substring(1, r.length() - 1);  // strip JSON quotes
@@ -340,11 +360,23 @@ void loop() {
   lcdShow("Card detected", "Checking...");
   String name = getUserName(uid);
 
-  if (name == "") {
-    lcdShow("ACCESS DENIED", uid);
+  if (name == "" && !firebaseOk) {                  // couldn't ask the database
+    lcdShow("No connection", "Try again");
+    Serial.println("[Firebase] lookup failed - check WiFi / rules");
+    beep(2, 300);
+    delay(2500);
+    lcdIdle();
+    return;
+  }
+
+  if (name == "") {                                 // database says: not registered
+    // UID stays on screen so it can be typed into the website. The portal
+    // also lists it under "Cards tapped but not registered" from this log.
+    lcdShow("Not registered", lcdUid(uid));
+    Serial.println("[RFID] Not registered: " + uid + "  -> register it on the Authority Portal");
     beep(3, 150);
     pushLog("scan", "Unknown card " + uid + " denied at " + STATION_ID);
-    delay(2500);
+    delay(4000);
     lcdIdle();
     return;
   }

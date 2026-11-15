@@ -44,6 +44,12 @@
     .checker-btn:hover { background: #34d399; }
     .checker-btn:active { transform: scale(0.98); }
     .field-hint { font-size: 0.75rem; color: #94a3b8; margin-top: 0.35rem; line-height: 1.4; }
+    .pending-cards { background: #f59e0b14; border: 1px solid #f59e0b55; border-radius: 0.9rem; padding: 0.75rem 0.9rem; margin-bottom: 1rem; }
+    .pending-title { color: #fbbf24; font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem; }
+    .pending-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .pending-chip { font-family: ui-monospace, monospace; font-size: 0.85rem; background: #0f172a; color: #f8fafc; border: 1px solid #f59e0b88; border-radius: 999px; min-height: 40px; padding: 0 0.9rem; cursor: pointer; }
+    .pending-chip:hover, .pending-chip:focus-visible { background: #f59e0b22; }
+    .pending-chip small { font-family: inherit; color: #94a3b8; margin-left: 0.4rem; }
     .db-error { color: #fbbf24; font-size: 0.85rem; }
     code { font-family: ui-monospace, monospace; color: #cbd5e1; }
 
@@ -220,8 +226,13 @@
         <div class="grid">
           <div class="card admin-form-card">
             <h3><i class="fa-solid fa-user-plus" style="color:#38bdf8;"></i> Register New Card</h3>
-            <div class="field"><label>Card UID</label><input type="text" id="regUid" placeholder="e.g. 55 66 77 88"><div class="field-hint">Copy it from the station's LCD ("ACCESS DENIED" screen) or Serial Monitor.</div></div>
-            <div class="field"><label>Account Holder Name</label><input type="text" id="regName" placeholder="e.g. Aarav Mehta"></div>
+            <div class="pending-cards" id="pendingCards" hidden>
+              <div class="pending-title"><i class="fa-solid fa-bell" aria-hidden="true"></i> Cards tapped but not registered</div>
+              <div class="pending-list" id="pendingList"></div>
+              <div class="field-hint">Tap a card to fill in its UID, then type the name.</div>
+            </div>
+            <div class="field"><label for="regUid">Card UID</label><input type="text" id="regUid" placeholder="e.g. 41 9E FE 03"><div class="field-hint">Tap the card at the station: the LCD shows "Not registered" and the UID, and it appears in the list above.</div></div>
+            <div class="field"><label for="regName">Account Holder Name</label><input type="text" id="regName" placeholder="e.g. Aarav Mehta"></div>
             <button class="checker-btn" onclick="registerCard()">Register Card</button>
             <div class="admin-form-result" id="regResult"></div>
           </div>
@@ -444,7 +455,7 @@
         }
         return database.ref('users/' + uid).set({ name, points: 0 }).then(() => {
           pushLog('scan', `New card registered for ${name} (${uid})`);
-          showFormResult(resultBox, 'success', `Card registered for ${name}.`);
+          showFormResult(resultBox, 'success', `Card registered for ${name}. It works at the station straight away.`);
           document.getElementById('regUid').value = '';
           document.getElementById('regName').value = '';
         });
@@ -558,6 +569,31 @@
       }, (err) => {
         document.getElementById('binContainer').innerHTML = dbErrorHtml(err);
       });
+
+      // Cards that were tapped at a station but aren't registered yet.
+      // The ESP32 logs "Unknown card 41 9E FE 03 denied at STATION-01"; we list
+      // those UIDs (minus ones registered since) so they can be registered in one click.
+      let recentLogs = {}, registered = {};
+      const renderPending = () => {
+        const seen = new Map();
+        Object.values(recentLogs).forEach(l => {
+          const m = /Unknown card ((?:[0-9A-F]{2} ){3,9}[0-9A-F]{2})/.exec(l && l.text || '');
+          const uid = m && normalizeUid(m[1]);
+          if (uid && !registered[uid]) { seen.delete(uid); seen.set(uid, l.time || ''); }   // keep latest tap last
+        });
+        const box = document.getElementById('pendingCards');
+        box.hidden = seen.size === 0;
+        document.getElementById('pendingList').innerHTML = [...seen].reverse().slice(0, 8).map(([uid, time]) =>
+          `<button type="button" class="pending-chip" data-uid="${esc(uid)}">${esc(uid)}${time ? `<small>${esc(time)}</small>` : ''}</button>`).join('');
+      };
+      document.getElementById('pendingList').addEventListener('click', (e) => {
+        const chip = e.target.closest('.pending-chip');
+        if (!chip) return;
+        document.getElementById('regUid').value = chip.dataset.uid;
+        document.getElementById('regName').focus();
+      });
+      database.ref('logs').limitToLast(200).on('value', (snap) => { recentLogs = snap.val() || {}; renderPending(); }, () => {});
+      database.ref('users').on('value', (snap) => { registered = snap.val() || {}; renderPending(); }, () => {});
 
       // /logs — newest 20 events, shown newest-first
       database.ref('logs').limitToLast(20).on('value', (snapshot) => {

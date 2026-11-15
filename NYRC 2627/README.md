@@ -48,8 +48,14 @@ stay on and on the same Wi-Fi as the station.
    then in the Arduino IDE Sketch > Include Library > Add .ZIP Library. The `#include`
    in `EcoStation_Cam.ino` already matches. Switch the station on with the flap empty:
    the CAM uses that photo to detect "nothing on the flap" (see WIRING.md 5a and 5b).
-4. Register cards on the website's Authority Portal. The UID format printed on
-   the Serial Monitor (e.g. `A3 5F 8C 12`) is exactly what the website uses.
+4. Register cards on the website's Authority Portal. No card UIDs are written in
+   the sketch: the station looks every tap up in Firebase `/users`, so a card works
+   the moment it is registered (no re-upload). To add a new card, tap it at the
+   station: the LCD shows **Not registered** plus its UID (e.g. `41 9E FE 03`), and
+   the portal lists it under **Cards tapped but not registered**. Click it, type the
+   name, press Register. The UID format (capitals, a space between bytes) is the
+   same on the ESP32 and the website, and the website tidies typed UIDs
+   (`419efe03` becomes `41 9E FE 03`).
 
 ## What goes to Firebase
 
