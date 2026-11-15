@@ -24,7 +24,7 @@ stay on and on the same Wi-Fi as the station.
 |---|---|---|
 | RC522 RFID (3.3 V!) | SDA/SS · SCK · MOSI · MISO · RST | 5 · 18 · 23 · 19 · 27 |
 | I2C LCD 16×2 | SDA · SCL | 21 · 22 |
-| Servo MG996R (signal) | SIG | 13 (power from separate 5 V supply, common GND) |
+| Servo SG90 (signal, orange) | SIG | 13 (power from separate 5 V supply, common GND) |
 | Buzzer | + | 4 |
 | Push button (button version only) | one leg · diagonal leg | 26 · GND |
 | Ultrasonic – WET bin | TRIG · ECHO | 32 · 33 |

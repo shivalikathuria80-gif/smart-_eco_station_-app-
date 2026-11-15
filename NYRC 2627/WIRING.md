@@ -109,7 +109,7 @@ and upload again. Afterwards press **RST** to run the sketch.
 | RC522 RFID | 3.3 V | **3V3** (not 5 V) | |
 | LCD 16×2 I2C | SDA | GPIO 21 | I2C, address `0x27` |
 | LCD 16×2 I2C | SCL | GPIO 22 | I2C |
-| Servo MG996R | Signal (orange) | GPIO 13 | `SERVO_PIN` |
+| Servo SG90 | Signal (orange) | GPIO 13 | `SERVO_PIN` |
 | Buzzer | + | GPIO 4 | `BUZZER_PIN` |
 | Push button (button version only) | one leg | GPIO 26 | `BUTTON_PIN` |
 | Push button | opposite corner leg | GND | (no resistor needed) |
@@ -212,8 +212,9 @@ the same pins for upload and for the link.
    `RESULT:NONE`. Otherwise it runs the model. The reply goes out on GPIO 3 →
    main receives on GPIO 16 as `RESULT:WET:0.93`, `RESULT:DRY:0.88` or
    `RESULT:NONE:1.00`.
-6. Main ESP32 sorts it: servo on GPIO 13 tilts the flap to 30° (WET) or
-   150° (DRY), or stays centered for `NONE`.
+6. Main ESP32 sorts it: the SG90 servo on GPIO 13 sweeps the flap slowly to
+   30° (WET) or 150° (DRY) and back, or stays centered for `NONE`. If it
+   tilts the wrong way, swap `SERVO_WET` and `SERVO_DRY` in the sketch.
 7. Main ESP32 awards points only for WET or DRY with confidence ≥
    `MIN_CONFIDENCE` (0.60), and writes to Firebase. `NONE` or a low-confidence
    guess shows "No waste seen / No points given".

@@ -11,7 +11,7 @@ A smart dustbin station that **starts with an RFID card tap**, **uses AI to reco
 | **Main ESP32** | The "brain": controls everything and connects to the internet over Wi-Fi |
 | **ESP32-CAM** | Takes a photo of the waste |
 | **Laptop running `app.py`** | Runs the Teachable Machine AI model that decides wet or dry |
-| **Servo motor (MG996R)** | Tilts the flap to drop the waste into the wet or dry bin |
+| **Servo motor (SG90)** | Tilts the flap to drop the waste into the wet or dry bin |
 | **2 ultrasonic sensors (HC-SR04)** | One inside each bin, measuring how full it is |
 | **16×2 LCD screen** | Shows messages and fill levels at the station |
 | **Buzzer** | Beeps for success and errors |

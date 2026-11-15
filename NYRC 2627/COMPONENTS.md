@@ -12,7 +12,7 @@ Circuit diagram: [circuit_diagram.svg](circuit_diagram.svg) (open in any browser
 | 3 | ESP32-CAM-MB USB programmer board | 1 | To upload code to the ESP32-CAM |
 | 4 | RC522 RFID reader module | 1 | Reads user cards |
 | 5 | RFID cards / key tags (13.56 MHz) | 5+ | One per user |
-| 9 | MG996R servo motor (metal gear) | 1 | Tilts the flap to wet/dry bin |
+| 9 | SG90 micro servo (plastic gear) | 1 | Tilts the flap to wet/dry bin (keep the flap light) |
 | 10 | HC-SR04 ultrasonic sensor | 2 | Measures fill level of each bin |
 | 11 | 16×2 LCD with I2C module (PCF8574) | 1 | Shows messages and fill levels |
 | 12 | Active buzzer (5V) | 1 | Beeps for success / error |
@@ -85,7 +85,7 @@ ECHO ──[ 1kΩ ]──┬── ESP32 GPIO
 
 ## 4. Safety notes
 - **Before connecting anything:** turn the LM2596 screw until its output reads **5.0V** on a multimeter.
-- **Servo:** power it from the 5V rail, not from the ESP32's 5V pin.
+- **Servo (SG90):** power it from the 5V rail (red = 5V, brown = GND, orange = signal on GPIO 13), not from the ESP32's 5V or 3.3V pin. Keep the 1000 µF capacitor across its 5V/GND. The SG90 has plastic gears and lifts only about 1.8 kg·cm, so use a light flap (thin cardboard or plastic), pivot it near its middle, and never force the horn by hand while it is powered.
 - **Uploading to the ESP32-CAM:** unplug its GPIO1/GPIO3 wires first.
 
 ## 5. Where to buy: Robu.in (single source)
@@ -100,7 +100,7 @@ Prices and stock were checked on robu.in on 29 Sep 2026 (₹, incl. GST) and may
 | 3 | ESP32-CAM-MB USB programmer | 1 | ₹119 | https://robu.in/product/esp32-cam-mb-micro-usb-shield-module-for-esp32-cam-development-board/ |
 | 4 | RC522 RFID reader + card & key tag | 1 | ₹69 | https://robu.in/product/mifare-rfid-readerwriter-13-56mhz-rc522-spi-s50-fudan-card-and-keychain/ |
 | 5 | Extra 13.56 MHz RFID cards | 4+ | – | https://robu.in/?s=13.56mhz+rfid+card&post_type=product |
-| 9 | TowerPro MG996R servo (180°) | 1 | ₹409 | https://robu.in/product/towardpro-mg996r-digital-high-torque-servo-motor/ |
+| 9 | SG90 micro servo (180°) | 1 | — | (team switched from the MG996R in Nov 2026) |
 | 10 | HC-SR04 ultrasonic sensor | 2 | ₹79 | https://robu.in/product/hc-sr04-ultrasonic-range-finder/ |
 | 11 | LCD1602 with I2C interface | 1 | ₹189 | https://robu.in/product/lcd1602-parallel-lcd-display-with-iic-i2c-interface/ |
 | 12 | 5V active buzzer | 1 | ₹18 | https://robu.in/product/5v-active-electromagnetic-buzzer-pack-of-5/ |
@@ -132,7 +132,7 @@ All of these were in stock and added to the Amazon cart. Unlike Robu, Amazon has
 | 3 | ESP32-CAM-MB programmer (Roboduino) | 1 | ₹229 | https://www.amazon.in/dp/B0GGDDXNQR |
 | 4 | RC522 RFID kit + card + key tag (ApTechDeals) | 1 | ₹157 | https://www.amazon.in/dp/B07Q1B6QZR |
 | 5 | RFID cards 13.56 MHz, pack of 10 | 1 | ₹325 | https://www.amazon.in/dp/B0CL9YVX2V |
-| 9 | MG996R servo (Robocraze) | 1 | ₹395 | https://www.amazon.in/dp/B08F79X9CN |
+| 9 | SG90 micro servo | 1 | — | any SG90 / TowerPro SG90 |
 | 10 | HC-SR04 ultrasonic sensor (Robocraze) | 2 | ₹170 | https://www.amazon.in/dp/B01I1ZTPJC |
 | 11 | 16×2 LCD with pre-soldered I2C | 1 | ₹249 | https://www.amazon.in/dp/B0DQVF3HXG |
 | 12 | 5V active buzzer | 1 | ₹55 | https://www.amazon.in/dp/B0H1X539R9 |
