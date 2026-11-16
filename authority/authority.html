@@ -248,7 +248,7 @@
 
         <!-- Bin monitoring -->
         <h3 class="section-title"><i class="fa-solid fa-boxes-stacked"></i> Station Bin Monitoring</h3>
-        <p style="color:#64748b; font-size:0.85rem; margin-top:-0.6rem;">Populated once an ESP32-CAM station writes fill data to <code>/bins</code> in Firebase.</p>
+        <p style="color:#64748b; font-size:0.85rem; margin-top:-0.6rem;">Populated once an ESP32 station writes fill data to <code>/bins</code> in Firebase.</p>
         <div class="grid" id="binContainer">
           <p style="color:#64748b;">No stations connected yet.</p>
         </div>
@@ -516,7 +516,7 @@
 
     function attachAuthorityListeners() {
       // /bins/{binId} = { zone, columns: { dry, wet } }
-      // Written directly by an ESP32-CAM station once real hardware is deployed.
+      // Written directly by the ESP32 station once real hardware is deployed.
       database.ref('bins').on('value', (snapshot) => {
         const binContainer = document.getElementById('binContainer');
         const alertBanner = document.getElementById('alertBanner');
