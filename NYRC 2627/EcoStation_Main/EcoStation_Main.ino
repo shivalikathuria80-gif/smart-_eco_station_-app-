@@ -87,6 +87,16 @@ const unsigned long ITEM_SETTLE_TIME = 1500;   // wait for item to rest on flap 
 const unsigned long BIN_UPLOAD_EVERY = 15000;
 const unsigned long WIFI_RETRY_EVERY = 10000;
 
+// Ultrasonic reliability on laptop USB power. The 5 V rail sags when the
+// servo or Wi-Fi pulls current, and then the HC-SR04s return no echo.
+// So: the servo is switched off between moves, sensors wait for the rail to
+// recover after the servo stops, only one sensor pings at a time, and each
+// reading takes the median of several tries.
+const int           US_TRIES          = 5;    // pings per reading
+const unsigned long US_GAP_MS         = 60;   // pause between pings (and between sensors)
+const unsigned long US_AFTER_SERVO_MS = 300;  // wait this long after the servo stops
+const int           FLAP_CAL_TRIES    = 10;   // boot calibration attempts for the "eyes"
+
 // ------------------------------------------------------------------- PINS --
 // RC522 (SPI): SCK 18, MISO 19, MOSI 23
 #define RFID_SS_PIN    5
@@ -246,18 +256,41 @@ void uploadBinLevels() {
 }
 
 // ============================================================ ULTRASONIC ==
-// fallback: value returned when no echo comes back
+unsigned long servoOffAt = 0;   // millis() when the servo was last switched off
+bool servoOn = false;
+
+// One ping. Returns the distance in cm, or -1 if no echo came back.
+float pingOnce(int trig, int echo) {
+  digitalWrite(trig, LOW);  delayMicroseconds(4);
+  digitalWrite(trig, HIGH); delayMicroseconds(10);
+  digitalWrite(trig, LOW);
+  long us = pulseIn(echo, HIGH, 30000);   // 30 ms timeout (~5 m)
+  if (us <= 0) return -1;
+  float cm = us * 0.0343 / 2.0;
+  return (cm < 2 || cm > 400) ? -1 : cm;  // outside the HC-SR04's range = bad
+}
+
+// Median of up to US_TRIES good pings. fallback: value returned when none came back.
+// Never pings while the servo is powered, and waits for the 5 V rail to recover.
 float readDistanceCm(int trig, int echo, float fallback = BIN_DEPTH_CM) {
-  float sum = 0; int good = 0;
-  for (int i = 0; i < 5; i++) {
-    digitalWrite(trig, LOW);  delayMicroseconds(2);
-    digitalWrite(trig, HIGH); delayMicroseconds(10);
-    digitalWrite(trig, LOW);
-    long us = pulseIn(echo, HIGH, 30000);   // 30 ms timeout (~5 m)
-    if (us > 0) { sum += us * 0.0343 / 2.0; good++; }
-    delay(30);
+  if (servoOn) return fallback;
+  unsigned long since = millis() - servoOffAt;
+  if (since < US_AFTER_SERVO_MS) delay(US_AFTER_SERVO_MS - since);
+
+  float good[US_TRIES];
+  int n = 0;
+  for (int i = 0; i < US_TRIES; i++) {
+    delay(US_GAP_MS);                      // also keeps sensors from hearing each other
+    float cm = pingOnce(trig, echo);
+    if (cm > 0) good[n++] = cm;
   }
-  return good ? sum / good : fallback;       // no echo -> treat as empty
+  if (n == 0) return fallback;             // no echo at all
+  for (int i = 1; i < n; i++) {            // sort, then take the middle value
+    float v = good[i]; int j = i - 1;
+    while (j >= 0 && good[j] > v) { good[j + 1] = good[j]; j--; }
+    good[j + 1] = v;
+  }
+  return good[n / 2];
 }
 
 int toPercent(float distance) {
@@ -327,6 +360,25 @@ String detectWaste(int& moisture) {
 
 int flapAngle = SERVO_CENTER;
 
+// Servo power: PWM only while moving. Switched off, the SG90 draws almost no
+// current, which leaves the 5 V rail clean for the ultrasonics.
+void servoStart() {
+  if (servoOn) return;
+  flap.setPeriodHertz(50);
+  flap.attach(SERVO_PIN, SERVO_MIN_US, SERVO_MAX_US);   // SG90
+  flap.write(flapAngle);
+  servoOn = true;
+}
+
+void servoStop() {
+  if (!servoOn) return;
+  delay(150);                                    // let it finish the last step
+  flap.detach();
+  pinMode(SERVO_PIN, OUTPUT); digitalWrite(SERVO_PIN, LOW);
+  servoOn = false;
+  servoOffAt = millis();
+}
+
 // Moves one degree at a time: smaller current spikes (no brown-outs) and less
 // shock on the SG90's plastic gears than jumping straight to the angle.
 void moveFlap(int target) {
@@ -339,10 +391,22 @@ void moveFlap(int target) {
 }
 
 void sortItem(bool wet) {
+  servoStart();
   moveFlap(wet ? SERVO_WET : SERVO_DRY);
   delay(800);                                     // let the waste slide off
   moveFlap(SERVO_CENTER);
-  delay(300);
+  servoStop();                                    // no holding current between items
+}
+
+// Measures the empty flap with the "eyes". Tries several times before giving up.
+bool calibrateFlap() {
+  for (int i = 0; i < FLAP_CAL_TRIES; i++) {
+    float cm = readDistanceCm(ITEM_TRIG_PIN, ITEM_ECHO_PIN, 0);
+    if (cm >= 3) { flapEmptyCm = cm; return true; }
+    Serial.printf("[Flap] calibration try %d: no reading\n", i + 1);
+    delay(200);
+  }
+  return false;
 }
 
 // ================================================================= SETUP ==
@@ -359,10 +423,10 @@ void setup() {
   lcd.init(); lcd.backlight();
   lcdShow("Smart Eco", "Station booting");
 
-  flap.setPeriodHertz(50);
-  flap.attach(SERVO_PIN, SERVO_MIN_US, SERVO_MAX_US);   // SG90
-  flap.write(SERVO_CENTER);
   flapAngle = SERVO_CENTER;
+  servoStart();                                  // centre the flap once...
+  delay(500);
+  servoStop();                                   // ...then switch the servo off
 
   SPI.begin();
   rfid.PCD_Init();
@@ -370,18 +434,19 @@ void setup() {
   // Empty-flap reference: height for ultrasonic #3, dry value for moisture
   lcdShow("Keep flap empty", "Calibrating...");
   delay(1000);
-  flapEmptyCm = readDistanceCm(ITEM_TRIG_PIN, ITEM_ECHO_PIN, 0);
+  bool flapOk = calibrateFlap();
   moistureDry = readMoisture();
   Serial.printf("[Flap] empty=%.1f cm  moisture dry=%d\n", flapEmptyCm, moistureDry);
-  if (flapEmptyCm < 3) {                         // no echo or sensor too close
-    lcdShow("Item sensor?", "Check US #3");
-    Serial.println("[Flap] ultrasonic #3 gave no reading - check TRIG 26 / ECHO 35");
+  if (!flapOk) {                                 // keeps retrying in loop()
+    lcdShow("Item sensor?", "Retrying...");
+    Serial.println("[Flap] ultrasonic #3 gave no reading - will keep retrying every 5 s");
     beep(3, 300);
-    delay(3000);
+    delay(2000);
   }
 
   lcdShow("Connecting WiFi", WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  WiFi.setTxPower(WIFI_POWER_11dBm);   // smaller current spikes on USB power; plenty for a nearby router/hotspot
   for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("WiFi OK: " + WiFi.localIP().toString());
@@ -412,6 +477,18 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED && millis() - lastWifiRetry > WIFI_RETRY_EVERY) {
     WiFi.reconnect();                                // retry every 10 s, not every loop
     lastWifiRetry = millis();
+  }
+
+  // "Eyes" missed the boot calibration? Keep trying until it works.
+  static unsigned long lastCalTry = 0;
+  if (flapEmptyCm < 3 && millis() - lastCalTry > 5000) {
+    lastCalTry = millis();
+    float cm = readDistanceCm(ITEM_TRIG_PIN, ITEM_ECHO_PIN, 0);  // one quick try, so cards still work
+    if (cm >= 3) {
+      flapEmptyCm = cm;
+      Serial.printf("[Flap] calibrated late: empty=%.1f cm\n", flapEmptyCm);
+      lcdIdle();
+    }
   }
 
   // Periodic fill-level report (LCD + website)
