@@ -1,6 +1,6 @@
 # Smart Eco Station: Components List & Wiring
 
-Circuit diagram: [circuit_diagram.svg](circuit_diagram.svg) (open in any browser)
+Final stack: ESP32 DevKit, powered from the computer USB, RFID, LCD, SG90 servo, 2 bin ultrasonics, 1 ultrasonic "eyes" above the flap, moisture sensor. The old camera build (ESP32-CAM, 12 V adapter, LM2596) is kept only as a backup in [Backup_Camera/](Backup_Camera/README.md).
 
 ## 1. Components
 
@@ -8,26 +8,21 @@ Circuit diagram: [circuit_diagram.svg](circuit_diagram.svg) (open in any browser
 | # | Component | Qty | Purpose |
 |---|---|---|---|
 | 1 | ESP32 DevKit V1 (30/38-pin) | 1 | Main controller + Wi-Fi |
-| 2 | ESP32-CAM (AI-Thinker, OV2640) | (1) | Camera backup build only |
-| 3 | ESP32-CAM-MB USB programmer board | (1) | Camera backup build only |
 | 4 | RC522 RFID reader module | 1 | Reads user cards |
 | 5 | RFID cards / key tags (13.56 MHz) | 5+ | One per user |
 | 9 | SG90 micro servo (plastic gear) | 1 | Tilts the flap to wet/dry bin (keep the flap light) |
-| 10 | HC-SR04 ultrasonic sensor | 3 | Fill level of each bin + item on the flap |
+| 10 | HC-SR04 ultrasonic sensor | 3 | 2 for bin fill levels + 1 "eyes" above the flap |
 | 10a | Soil moisture sensor (resistive or capacitive, with AO pin) | 1 | On the flap: decides wet or dry |
 | 11 | 16×2 LCD with I2C module (PCF8574) | 1 | Shows messages and fill levels |
-| 12 | Active buzzer (5V) | 1 | Beeps for success / error |
+| 12 | Active buzzer (5V) | (1) | Optional: beeps for success / error |
 | 13 | Resistors 1 kΩ | 3 | Voltage divider for ECHO pins |
 | 14 | Resistors 2.2 kΩ | 3 | Voltage divider for ECHO pins |
-| 15 | Capacitor 1000 µF / 16V | 1 | Across servo 5V/GND, stops resets |
-
-Items 6–8 (12V solenoid lock, relay module, 1N4007 diode) were removed: this build has no solenoid.
+| 15 | Capacitor 1000 µF / 16V | 1 | Across servo 5V/GND, stops resets on USB power |
 
 ### Power
 | # | Component | Qty | Purpose |
 |---|---|---|---|
-| 16 | 12V 2A DC adapter + DC jack | 1 | Main power |
-| 17 | LM2596 buck converter (12V → 5V, 3A) | 1 | 5V for ESP32, CAM, servo, sensors |
+| 16 | USB cable (micro-USB or USB-C, to match your ESP32) | 1 | Power and uploading, from the computer |
 
 ### Wiring & build
 | # | Component | Qty |
@@ -41,8 +36,8 @@ Items 6–8 (12V solenoid lock, relay module, 1N4007 diode) were removed: this b
 ### Other
 | # | Item | Purpose |
 |---|---|---|
-| 23 | Laptop | Runs `app.py` (AI model) and shows the website |
-| 24 | Wi-Fi router or phone hotspot | Connects ESP32, ESP32-CAM and laptop |
+| 23 | Laptop | Powers the station over USB and shows the website |
+| 24 | Wi-Fi router or phone hotspot | Connects the ESP32 and the laptop |
 
 ## 2. Pin connections
 
@@ -57,22 +52,23 @@ Items 6–8 (12V solenoid lock, relay module, 1N4007 diode) were removed: this b
 | RC522 | 3.3V | **3V3** (not 5V!) |
 | LCD I2C | SDA | GPIO 21 |
 | LCD I2C | SCL | GPIO 22 |
-| Buzzer | + | GPIO 4 |
 | HC-SR04 WET | TRIG | GPIO 32 |
 | HC-SR04 WET | ECHO | GPIO 33 (through 1k/2.2k divider) |
 | HC-SR04 DRY | TRIG | GPIO 25 |
 | HC-SR04 DRY | ECHO | GPIO 14 (through 1k/2.2k divider) |
 | Servo | Signal (orange) | GPIO 13 |
-| HC-SR04 ITEM (above flap) | TRIG | GPIO 26 |
-| HC-SR04 ITEM (above flap) | ECHO | GPIO 35 (through 1k/2.2k divider) |
+| HC-SR04 EYES (above flap) | TRIG | GPIO 26 |
+| HC-SR04 EYES (above flap) | ECHO | GPIO 35 (through 1k/2.2k divider) |
 | Moisture sensor | AO | GPIO 34 |
 | Moisture sensor | VCC | GPIO 16 (switched on only while reading) |
+| Buzzer (optional) | + | GPIO 4 |
 
 ### Power
 | From | To |
 |---|---|
-| 12V adapter + | LM2596 IN+ |
-| LM2596 OUT+ (5V) | ESP32 VIN, Servo red, all three HC-SR04 VCC, LCD VCC |
+| Computer USB | ESP32 USB port |
+| ESP32 VIN (5V from USB) | Servo red, all three HC-SR04 VCC, LCD VCC |
+| ESP32 3V3 | RC522 3.3V |
 | All GNDs | Connected together (common ground) |
 
 ## 3. ECHO voltage divider (for each HC-SR04)
@@ -87,9 +83,7 @@ ECHO ──[ 1kΩ ]──┬── ESP32 GPIO
 ```
 
 ## 4. Safety notes
-- **Before connecting anything:** turn the LM2596 screw until its output reads **5.0V** on a multimeter.
-- **Servo (SG90):** power it from the 5V rail (red = 5V, brown = GND, orange = signal on GPIO 13), not from the ESP32's 5V or 3.3V pin. Keep the 1000 µF capacitor across its 5V/GND. The SG90 has plastic gears and lifts only about 1.8 kg·cm, so use a light flap (thin cardboard or plastic), pivot it near its middle, and never force the horn by hand while it is powered.
-- **Uploading to the ESP32-CAM:** unplug its GPIO1/GPIO3 wires first.
+- **Servo (SG90):** red to the 5V rail fed from the ESP32's VIN pin, brown to GND, orange to GPIO 13. Keep the 1000 µF capacitor across its 5V/GND (long leg to 5V): a computer USB port gives little current, and without it the ESP32 can restart when the flap moves. More fixes in WIRING.md section 1a. The SG90 has plastic gears and lifts only about 1.8 kg·cm, so use a light flap (thin cardboard or plastic), pivot it near its middle, and never force the horn by hand while it is powered.
 
 ## 5. Where to buy: Robu.in (single source)
 
@@ -98,56 +92,41 @@ Prices and stock were checked on robu.in on 29 Sep 2026 (₹, incl. GST) and may
 | # | Component | Qty | Price (each) | Link |
 |---|---|---|---|---|
 | 1 | SmartElex ESP32-WROOM-32D DevKit | 1 | ₹819 | https://robu.in/product/smartelex-esp-wroom-32-wifi-bluetooth-networking-development-board-1-pcs/ |
-| 2a | ESP32-CAM board **without** camera (AI-Thinker) | 1 | ₹709 | https://robu.in/product/esp32-cam-wifi-module-bluetooth-without-camera-module/ |
-| 2b | OV2640 camera module, 24-pin ribbon ⚠️ | 1 | ₹279 | https://robu.in/product/0-3mp-ov2640-v1-0-camera-module-with-high-quality-sccb-connector/ |
-| 3 | ESP32-CAM-MB USB programmer | 1 | ₹119 | https://robu.in/product/esp32-cam-mb-micro-usb-shield-module-for-esp32-cam-development-board/ |
 | 4 | RC522 RFID reader + card & key tag | 1 | ₹69 | https://robu.in/product/mifare-rfid-readerwriter-13-56mhz-rc522-spi-s50-fudan-card-and-keychain/ |
 | 5 | Extra 13.56 MHz RFID cards | 4+ | – | https://robu.in/?s=13.56mhz+rfid+card&post_type=product |
 | 9 | SG90 micro servo (180°) | 1 | — | (team switched from the MG996R in Nov 2026) |
-| 10 | HC-SR04 ultrasonic sensor | 2 | ₹79 | https://robu.in/product/hc-sr04-ultrasonic-range-finder/ |
+| 10 | HC-SR04 ultrasonic sensor | 3 | ₹79 | https://robu.in/product/hc-sr04-ultrasonic-range-finder/ |
 | 11 | LCD1602 with I2C interface | 1 | ₹189 | https://robu.in/product/lcd1602-parallel-lcd-display-with-iic-i2c-interface/ |
-| 12 | 5V active buzzer | 1 | ₹18 | https://robu.in/product/5v-active-electromagnetic-buzzer-pack-of-5/ |
-| 13 | 1 kΩ resistor (through-hole) | 2 | ₹2.45 | https://robu.in/?s=1k+ohm+0.25w+carbon+film+resistor&post_type=product |
-| 14 | 2 kΩ / 2.2 kΩ resistor (through-hole) | 2 | – | https://robu.in/?s=2.2k+ohm+0.25w+resistor&post_type=product |
+| 12 | 5V active buzzer (optional) | 1 | ₹18 | https://robu.in/product/5v-active-electromagnetic-buzzer-pack-of-5/ |
+| 13 | 1 kΩ resistor (through-hole) | 3 | ₹2.45 | https://robu.in/?s=1k+ohm+0.25w+carbon+film+resistor&post_type=product |
+| 14 | 2 kΩ / 2.2 kΩ resistor (through-hole) | 3 | – | https://robu.in/?s=2.2k+ohm+0.25w+resistor&post_type=product |
 | 15 | 1000 µF 16V/25V electrolytic capacitor | 1 | – | https://robu.in/?s=1000uf+25v+capacitor&post_type=product |
-| 16 | 12V 2A power adapter (5.5 mm plug) | 1 | ₹399 | https://robu.in/product/orange-12v-2a-power-supply-with-5-5mm-dc-plug-adapter/ |
-| 17 | 5.5 mm female DC jack | 1 | – | https://robu.in/?s=dc+barrel+jack+female+5.5&post_type=product |
-| 18 | LM2596 buck converter with voltmeter display | 1 | ₹129 | https://robu.in/product/lm2596-buck-step-power-converter-module-dc-4-040-1-3-37v-led-voltmeter/ |
 | 19 | 830-point breadboard (transparent) | 1 | ₹159 | https://robu.in/product/transparent-830-points-solderless-breadboard/ |
 | 20 | Jumper wires M-M 40 pcs | 1 | ₹49 | https://robu.in/product/male-to-male-jumper-wires-40-pcs-10cm/ |
 | 21 | Jumper wires M-F 40 pcs | 1 | ₹49 | https://robu.in/product/male-to-female-jumper-wires-40pcs-20cm/ |
 | 22 | Jumper wires F-F 40 pcs | 1 | ₹49 | https://robu.in/product/10cm-female-female-breadboard-jumper-dupont-2-54mm-1p-1p-cable-40-pcs/ |
 
-**Approximate total (linked items with prices): about ₹3,660** (solenoid, relay and diode removed). Dustbins, flap and enclosure are extra; get these locally.
-
-**Notes**
-- **ESP32-CAM:** the complete ESP32-CAM kit is out of stock, so buy the board (2a) and the camera (2b) separately. Push the camera's ribbon cable into the board's connector and close the latch. The code doesn't change. When checked, the board was in stock but the OV2640 camera on Robu was **out of stock**. For the camera, get any **"OV2640 camera for ESP32-CAM" with a 24-pin ribbon cable** from any store. An **OV3660** camera with the same 24-pin ribbon also works with the same code.
-- **LM2596:** the version with the voltmeter display makes setting exactly 5.0V easy, with no multimeter needed.
+**Approximate total (linked items with prices): about ₹1,650** (no camera, no 12V adapter, no LM2596: the computer USB powers it). Dustbins, flap and enclosure are extra; get these locally.
 
 ## 6. Where to buy: Amazon.in (all in stock, 29 Sep 2026)
 
-All of these were in stock and added to the Amazon cart. Unlike Robu, Amazon has the **complete ESP32-CAM with OV2640 camera**, so no separate camera is needed.
+All of these were in stock and added to the Amazon cart.
 
 | # | Component | Qty | Price | Link |
 |---|---|---|---|---|
 | 1 | ESP32 DevKit V1 (30-pin, WROOM-32) | 1 | ₹559 | https://www.amazon.in/dp/B0HD7QC26L |
-| 2 | ESP32-CAM with OV2640 camera (BITSKY) | 1 | ₹999 | https://www.amazon.in/dp/B0BXGWCL91 |
-| 3 | ESP32-CAM-MB programmer (Roboduino) | 1 | ₹229 | https://www.amazon.in/dp/B0GGDDXNQR |
 | 4 | RC522 RFID kit + card + key tag (ApTechDeals) | 1 | ₹157 | https://www.amazon.in/dp/B07Q1B6QZR |
 | 5 | RFID cards 13.56 MHz, pack of 10 | 1 | ₹325 | https://www.amazon.in/dp/B0CL9YVX2V |
 | 9 | SG90 micro servo | 1 | — | any SG90 / TowerPro SG90 |
-| 10 | HC-SR04 ultrasonic sensor (Robocraze) | 2 | ₹170 | https://www.amazon.in/dp/B01I1ZTPJC |
+| 10 | HC-SR04 ultrasonic sensor (Robocraze) | 3 | ₹170 | https://www.amazon.in/dp/B01I1ZTPJC |
 | 11 | 16×2 LCD with pre-soldered I2C | 1 | ₹249 | https://www.amazon.in/dp/B0DQVF3HXG |
-| 12 | 5V active buzzer | 1 | ₹55 | https://www.amazon.in/dp/B0H1X539R9 |
+| 12 | 5V active buzzer (optional) | 1 | ₹55 | https://www.amazon.in/dp/B0H1X539R9 |
 | 13 | Resistor kit, 500 pcs, 50 values | 1 | ₹189 | https://www.amazon.in/dp/B0DV93JVVK |
 | 14 | 1000 µF 25V capacitors, pack of 10 | 1 | ₹134 | https://www.amazon.in/dp/B0H2WZBVCZ |
-| 15 | ELOVE 12V 2A adapter, 5.5 mm jack | 1 | ₹399 | https://www.amazon.in/dp/B0D9H9QWVN |
-| 16 | 5.5 mm DC jack female, pack of 10 | 1 | ₹127 | https://www.amazon.in/dp/B0BKQ1RTR3 |
-| 17 | LM2596 buck converter with voltmeter display | 1 | ₹299 | https://www.amazon.in/dp/B0FBLFX15X |
 | 18 | 830-point breadboard (Themisto) | 1 | ₹157 | https://www.amazon.in/dp/B0CGJDY5HL |
 | 19 | Jumper wire set (M-F + M-M + F-F) | 1 | ₹299 | https://www.amazon.in/dp/B0G3XYG92V |
 
-**Total: about ₹4,912** (solenoid, relay and diodes removed).
+**Total: about ₹2,650** (no camera, no 12V adapter, no LM2596).
 
 **Notes**
 - **Resistor kit:** it covers 1 Ω–2.2 MΩ in 50 values, but the listing doesn't list them. Make sure it includes 1 kΩ and 2 kΩ or 2.2 kΩ before you order.

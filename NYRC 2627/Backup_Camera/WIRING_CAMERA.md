@@ -1,10 +1,10 @@
 # Smart Eco Station: Wiring (camera version, backup)
 
 > This is the **backup camera build** (`EcoStation_Main_Camera` + `EcoStation_Cam`).
-> The station now runs the moisture-sensor build: see [WIRING.md](WIRING.md).
+> The station now runs the moisture-sensor build: see [WIRING.md](../WIRING.md).
 
 Every connection below is taken from the sketches in this repo. Where the code and
-[COMPONENTS.md](COMPONENTS.md) agree, the pin is listed once. Values come from
+[COMPONENTS.md](../COMPONENTS.md) agree, the pin is listed once. Values come from
 `EcoStation_Main_Camera.ino` and `EcoStation_Cam.ino`.
 
 Two ESP32s and one ESP32-CAM run on the same 5 V rail, sharing one ground.

@@ -5,13 +5,14 @@
  *  Flow:
  *    1. User taps RFID card (RC522)          -> checked against Firebase /users
  *    2. Valid card -> LCD asks user to put waste on the flap
- *    3. Ultrasonic #3 above the flap sees the item land
+ *    3. Ultrasonic #3 ("eyes") above the flap sees the item land
  *       Moisture sensor on the flap decides "WET" or "DRY"
  *    4. Servo tilts flap into the right bin  -> user gets reward points
  *    5. Two ultrasonic sensors measure fill  -> LCD + Firebase /bins (portal)
  *
- *  No camera in this version. The ESP32-CAM version is kept as
- *  EcoStation_Main_Camera (wiring in WIRING_CAMERA.md).
+ *  Stack: ESP32 DevKit (powered from the computer's USB), RC522 RFID,
+ *  16x2 I2C LCD, SG90 servo, 2 ultrasonics for bin fill, 1 ultrasonic as the
+ *  "eyes" above the flap, moisture sensor for wet/dry. Wiring: WIRING.md
  *
  *  KEEP THE FLAP EMPTY AND DRY WHEN YOU SWITCH ON: the station measures the
  *  empty flap (height + dry moisture reading) at boot and compares to that.
@@ -77,7 +78,8 @@ const int SERVO_WET     = 30;
 const int SERVO_DRY     = 150;
 const int SERVO_MIN_US  = 500;   // SG90 pulse range (0 deg .. 180 deg)
 const int SERVO_MAX_US  = 2400;
-const int SERVO_STEP_MS = 8;     // ms per degree: slow sweep = gentler on plastic gears
+const int SERVO_STEP_MS = 8;     // ms per degree: slow sweep = gentler on gears and on USB power
+                                 // (ESP32 restarts when the flap moves? try 12 or 15)
 
 // Timings (ms)
 const unsigned long DEPOSIT_TIME     = 10000;  // time the user gets to put waste on the flap
@@ -92,13 +94,13 @@ const unsigned long WIFI_RETRY_EVERY = 10000;
 // I2C LCD: SDA 21, SCL 22
 #define LCD_ADDR       0x27      // try 0x3F if screen stays blank
 #define SERVO_PIN      13
-#define BUZZER_PIN     4
+#define BUZZER_PIN     4         // optional: leave unconnected if you have no buzzer
 // Ultrasonic HC-SR04 (ECHO is 5V -> use a 1k/2k voltage divider)
 #define WET_TRIG_PIN   32
 #define WET_ECHO_PIN   33
 #define DRY_TRIG_PIN   25
 #define DRY_ECHO_PIN   14
-// Ultrasonic #3: item on the flap (ECHO via 1k/2.2k divider too)
+// Ultrasonic #3 = the "eyes": sees waste on the flap (ECHO via 1k/2.2k divider too)
 #define ITEM_TRIG_PIN  26
 #define ITEM_ECHO_PIN  35        // input-only pin, fine for ECHO
 // Moisture sensor: AO must be on an ADC1 pin (ADC2 stops working with WiFi on)
