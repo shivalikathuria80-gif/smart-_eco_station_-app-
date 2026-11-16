@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Smart AI Eco-Station Portal</title>
+  <title>Smart Eco-Station Portal</title>
 
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -128,18 +128,25 @@
     .flow-svg .wire { fill: none; stroke: #334155; stroke-width: 2; stroke-dasharray: 6 6; }
     .flow-svg .wire.live { stroke: #10b981; animation: dash 1s linear infinite; }
     @keyframes dash { to { stroke-dashoffset: -12; } }
+    @keyframes sonar { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
     .flow-svg [data-step].on .node { stroke: #10b981; }
     .flow-svg .rfid-card { transition: transform .6s cubic-bezier(.2,.7,.2,1); }
-    .flow-svg .door { transition: transform .5s cubic-bezier(.2,.7,.2,1); transform-box: fill-box; transform-origin: left center; }
-    .flow-svg .flash { opacity: 0; transition: opacity .2s; }
+    .flow-svg .sonar { fill: none; stroke: #38bdf8; stroke-width: 2.5; stroke-linecap: round; opacity: 0; }
+    .flow-svg .seen { opacity: 0; transition: opacity .3s; font-size: 12px; font-weight: 700; fill: #38bdf8; }
+    .flow-svg .prong { fill: #94a3b8; }
+    .flow-svg .probe-glow { opacity: 0; transition: opacity .3s; }
+    .flow-svg .gauge-fill { transform: scaleX(0); transform-box: fill-box; transform-origin: left center; transition: transform .9s cubic-bezier(.2,.7,.2,1), fill .3s; }
     .flow-svg .verdict { opacity: 0; transition: opacity .3s; font-size: 13px; font-weight: 700; }
     .flow-svg .flap { transition: transform .5s cubic-bezier(.2,.7,.2,1); transform-box: fill-box; transform-origin: center top; }
     .flow-svg .item { transition: transform .9s cubic-bezier(.45,.05,.25,1), opacity .3s; }
     .flow-svg .cloud-pulse { opacity: 0; transform-box: fill-box; transform-origin: center; }
     .flow-svg .pts-pop { opacity: 0; font-size: 15px; font-weight: 800; fill: #34d399; }
     .flow-svg.p1 .rfid-card { transform: translateX(34px); }
-    .flow-svg.p2 .door, .flow-svg.p3 .door { transform: rotate(-70deg); }
-    .flow-svg.p3 .flash { opacity: 1; }
+    .flow-svg.p2 .sonar { animation: sonar 1.1s ease-out infinite; }
+    .flow-svg.p2 .sonar:nth-of-type(2) { animation-delay: .2s; }
+    .flow-svg.p2 .sonar:nth-of-type(3) { animation-delay: .4s; }
+    .flow-svg.p2 .seen { opacity: 1; }
+    .flow-svg.p3 .probe-glow { opacity: 1; }
     .flow-svg.p3 .verdict, .flow-svg.p4 .verdict { opacity: 1; }
     .flow-svg.p5 .cloud-pulse { animation: pulse 1s ease-out; }
     .flow-svg.p5 .pts-pop { animation: pop 1.3s ease-out forwards; }
@@ -494,14 +501,14 @@
     <!-- PAGE 4: EXPANDED ABOUT PAGE -->
     <div id="about" class="page">
       <h1 class="page-title reveal d1">How the <strong>Eco-Station</strong> works</h1>
-      <p class="page-sub reveal d2">Edge-computing vision, two ESP32 boards, a servo-driven sorting flap and real-time cloud sync, working together to sort waste automatically and reward the people who recycle.</p>
+      <p class="page-sub reveal d2">One ESP32, an RFID reader, an ultrasonic &ldquo;eyes&rdquo; sensor, a moisture sensor, a servo-driven sorting flap and real-time cloud sync, working together to sort waste into wet and dry automatically and reward the people who recycle.</p>
 
       <!-- ANIMATED PIPELINE (synced with the workflow cards below) -->
       <section class="hero-panel about-hero reveal d3" aria-labelledby="flowCaption">
-        <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 300" role="img" aria-label="Animated diagram: an RFID card starts a session, the item goes into the chute, the camera classifies the item, the servo flap routes it to the wet or dry bin, and points sync to the cloud.">
+        <svg class="flow-svg" id="flowSvg" viewBox="0 0 800 300" role="img" aria-label="Animated diagram: an RFID card starts a session, the waste is placed on the flap and the ultrasonic eyes sensor sees it, the moisture sensor decides wet or dry, the servo flap routes it to the wet or dry bin, and points sync to the cloud.">
           <!-- wires -->
-          <path class="wire" id="w1" d="M120 150 H200"/>
-          <path class="wire" id="w2" d="M262 150 H385"/>
+          <path class="wire" id="w1" d="M120 150 H196"/>
+          <path class="wire" id="w2" d="M266 150 H385"/>
           <path class="wire" id="w3" d="M455 150 H530"/>
           <path class="wire" id="w4" d="M590 120 C620 70 660 60 690 70"/>
 
@@ -513,21 +520,30 @@
             <text class="lbl" x="80" y="215" text-anchor="middle">RFID tap</text>
           </g>
 
-          <!-- 2 chute -->
+          <!-- 2 ultrasonic "eyes" above the flap -->
           <g data-step="2">
-            <rect class="node" x="200" y="60" width="62" height="130" rx="14"/>
-            <rect class="door" x="204" y="72" width="54" height="8" rx="3" fill="#f59e0b"/>
-            <text class="lbl" x="231" y="215" text-anchor="middle">Chute</text>
+            <rect class="node" x="196" y="64" width="70" height="34" rx="10"/>
+            <circle cx="214" cy="81" r="10" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+            <circle cx="248" cy="81" r="10" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
+            <path class="sonar" d="M216 106 Q231 114 246 106"/>
+            <path class="sonar" d="M210 114 Q231 125 252 114"/>
+            <path class="sonar" d="M204 122 Q231 136 258 122"/>
+            <text class="seen" x="231" y="52" text-anchor="middle">ITEM SEEN</text>
+            <rect class="node" x="198" y="166" width="66" height="7" rx="3"/>
+            <text class="lbl" x="231" y="215" text-anchor="middle">Ultrasonic eyes</text>
           </g>
 
-          <!-- 3 camera -->
+          <!-- 3 moisture sensor -->
           <g data-step="3">
-            <rect class="node" x="385" y="88" width="70" height="52" rx="14"/>
-            <circle cx="420" cy="114" r="14" fill="#0f172a" stroke="#38bdf8" stroke-width="3"/>
-            <circle class="flash" cx="420" cy="114" r="30" fill="#f8fafc" fill-opacity="0.22"/>
-            <path class="flash" d="M404 142 L380 196 H460 L436 142 Z" fill="#f8fafc" fill-opacity="0.12"/>
-            <text class="verdict" id="verdict" x="420" y="74" text-anchor="middle" fill="#34d399">DRY</text>
-            <text class="lbl" x="420" y="215" text-anchor="middle">ESP32-CAM</text>
+            <rect class="node" x="388" y="84" width="64" height="30" rx="10"/>
+            <rect x="398" y="95" width="44" height="8" rx="4" fill="#0f172a" stroke="#334155"/>
+            <rect class="gauge-fill" id="gauge" x="398" y="95" width="44" height="8" rx="4" fill="#34d399"/>
+            <path class="prong" d="M406 114 h8 v26 l-4 6 l-4 -6 Z"/>
+            <path class="prong" d="M426 114 h8 v26 l-4 6 l-4 -6 Z"/>
+            <circle class="probe-glow" cx="410" cy="146" r="7" fill="#38bdf8" fill-opacity="0.35"/>
+            <circle class="probe-glow" cx="430" cy="146" r="7" fill="#38bdf8" fill-opacity="0.35"/>
+            <text class="verdict" id="verdict" x="420" y="72" text-anchor="middle" fill="#34d399">DRY</text>
+            <text class="lbl" x="420" y="215" text-anchor="middle">Moisture sensor</text>
           </g>
 
           <!-- 4 servo flap + bins -->
@@ -560,8 +576,8 @@
 
       <!-- SYSTEM METRICS OVERVIEW -->
       <div class="metrics-container">
-        <div class="metric-card sr"><h3 data-count="94.8" data-decimals="1" data-suffix="%">94.8%</h3><p>Classification accuracy</p></div>
-        <div class="metric-card sr"><h3>&lt; 2.5s</h3><p>Classification speed</p></div>
+        <div class="metric-card sr"><h3 data-count="10" data-suffix=" pts">10 pts</h3><p>Reward per sorted item</p></div>
+        <div class="metric-card sr"><h3>&lt; 2s</h3><p>Wet / dry moisture check</p></div>
         <div class="metric-card sr"><h3 data-count="100" data-suffix="%">100%</h3><p>Automated cloud sync</p></div>
         <div class="metric-card sr"><h3>0</h3><p>Manual sorting needed</p></div>
       </div>
@@ -569,10 +585,10 @@
       <!-- WORKFLOW STEP-BY-STEP -->
       <h2 class="section-title sr"><i class="fa-solid fa-gears" aria-hidden="true"></i> End-to-end sorting workflow</h2>
       <div class="workflow-steps" id="flowSteps">
-        <button type="button" class="step-card sr" data-goto="1"><div class="step-num">01</div><h4>RFID authentication</h4><p>User scans their RFID tag (RC522 module). The ESP32 verifies the UID and opens the camera feed so the user can put their waste in.</p></button>
-        <button type="button" class="step-card sr" data-goto="2"><div class="step-num">02</div><h4>Deposition &amp; detection</h4><p>The internal flash LED lights up and the camera node is notified that an item has been deposited.</p></button>
-        <button type="button" class="step-card sr" data-goto="3"><div class="step-num">03</div><h4>Vision classification</h4><p>The ESP32-CAM captures the item image and runs object classification to categorize the waste as Dry/Recyclable or Wet/Organic.</p></button>
-        <button type="button" class="step-card sr" data-goto="4"><div class="step-num">04</div><h4>Mechanical routing</h4><p>The main ESP32 signals the high-torque servo motor (MG996R) to pivot the diverter flap left or right into the bin.</p></button>
+        <button type="button" class="step-card sr" data-goto="1"><div class="step-num">01</div><h4>RFID authentication</h4><p>User taps their RFID card on the RC522 reader. The ESP32 checks the card on Firebase and the LCD greets them and asks them to put their waste on the flap.</p></button>
+        <button type="button" class="step-card sr" data-goto="2"><div class="step-num">02</div><h4>Deposit &amp; detection</h4><p>An ultrasonic sensor above the flap acts as the station's &ldquo;eyes&rdquo;. When the distance to the flap gets shorter, it knows a real item has been placed.</p></button>
+        <button type="button" class="step-card sr" data-goto="3"><div class="step-num">03</div><h4>Moisture check</h4><p>The moisture sensor's probes touch the item. If the reading drops well below the dry-flap value, it's Wet/Organic; otherwise it's Dry/Recyclable.</p></button>
+        <button type="button" class="step-card sr" data-goto="4"><div class="step-num">04</div><h4>Mechanical routing</h4><p>The ESP32 sweeps the SG90 servo slowly so the flap tips left or right and the item falls into the wet or dry bin.</p></button>
         <button type="button" class="step-card sr" data-goto="5"><div class="step-num">05</div><h4>Cloud auto-awarding</h4><p>A secure HTTPS request atomically adds the points on Firebase, reflecting live points instantly across all web clients.</p></button>
       </div>
 
@@ -582,18 +598,18 @@
 
         <div class="module-card sr">
           <div class="module-icon" style="background:#38bdf822; color:#38bdf8;"><i class="fa-solid fa-microchip" aria-hidden="true"></i></div>
-          <h3>Dual-Node Hardware Architecture</h3>
+          <h3>Single-Board Hardware Architecture</h3>
           <p>
-            By separating heavy visual processing from core mechanical timing, the system achieves maximum stability:
+            One ESP32 DevKit, powered straight from a computer's USB port, runs the whole station:
           </p>
           <ul>
-            <li><strong>Master Node (ESP32-DevKit):</strong> Manages RFID reader, LCD I2C, servo PWM, and Wi-Fi requests.</li>
-            <li><strong>Vision Node (ESP32-CAM):</strong> Handles snapshot capture, LED flash illumination, and UART serial output.</li>
+            <li><strong>Control:</strong> RFID reader (SPI), LCD (I2C), SG90 servo flap (PWM) and Wi-Fi requests to Firebase.</li>
+            <li><strong>Sensing:</strong> an ultrasonic &ldquo;eyes&rdquo; sensor over the flap, a moisture sensor that decides wet or dry, and two ultrasonics that measure how full each bin is.</li>
           </ul>
           <div class="tech-pill-list">
             <span class="tech-pill">ESP32 30-Pin</span>
-            <span class="tech-pill">ESP32-CAM</span>
-            <span class="tech-pill">UART 115200</span>
+            <span class="tech-pill">Moisture Sensor</span>
+            <span class="tech-pill">HC-SR04 &times; 3</span>
             <span class="tech-pill">SPI / I2C</span>
           </div>
         </div>
@@ -606,11 +622,12 @@
           </p>
           <ul>
             <li><strong>Card Access:</strong> The station only starts a sorting session after a valid RFID card is swiped.</li>
-            <li><strong>Visual Verification:</strong> Camera validates object presence before triggering servo or points payload.</li>
+            <li><strong>Item Check:</strong> The ultrasonic eyes must see a real item on the flap before the servo moves or any points are given.</li>
           </ul>
           <div class="tech-pill-list">
             <span class="tech-pill">RFID Access</span>
             <span class="tech-pill">Session Locking</span>
+            <span class="tech-pill">Ultrasonic Check</span>
           </div>
         </div>
 
@@ -702,7 +719,7 @@
   </main>
 
   <footer>
-    <p>Smart AI Waste Segregator • Multi-Page Web Portal connected to Realtime Database</p>
+    <p>Smart Waste Segregator • Multi-Page Web Portal connected to Realtime Database</p>
   </footer>
 
   <script>
@@ -1204,6 +1221,7 @@
       const item = document.getElementById('flowItem');
       const flap = document.getElementById('flap');
       const verdict = document.getElementById('verdict');
+      const gauge = document.getElementById('gauge');
       const caption = document.getElementById('flowCaption');
       const toggle = document.getElementById('flowToggle');
       const steps = [...document.querySelectorAll('#flowSteps .step-card')];
@@ -1213,10 +1231,10 @@
       document.documentElement.style.setProperty('--step-ms', STEP_MS + 'ms');
 
       const CAPTIONS = [
-        '<strong>1 · RFID tap.</strong> The card is verified and the camera feed opens.',
-        '<strong>2 · Deposit.</strong> The item drops in and the camera node is woken up.',
-        '<strong>3 · Classify.</strong> The ESP32-CAM snaps a photo and decides wet or dry.',
-        '<strong>4 · Route.</strong> The MG996R servo tilts the flap and the item falls into its bin.',
+        '<strong>1 · RFID tap.</strong> The card is verified and the LCD asks for your waste.',
+        '<strong>2 · Detect.</strong> The item is placed on the flap and the ultrasonic eyes see it.',
+        '<strong>3 · Moisture check.</strong> The probes touch the item and the reading decides wet or dry.',
+        '<strong>4 · Route.</strong> The SG90 servo tilts the flap and the item falls into its bin.',
         '<strong>5 · Reward.</strong> Points are added on Firebase and show up live on every screen.'
       ];
       let phase = 1, dry = true, playing = !reduced.matches, timer = 0;
@@ -1224,7 +1242,7 @@
       function itemAt(p) {
         // [x, y, opacity] per phase; bins sit either side of the flap.
         const binX = dry ? 606 : 514;
-        return [[231, 40, 0], [231, 150, 1], [420, 160, 1], [binX, 250, 1], [binX, 250, 0]][p - 1];
+        return [[231, 40, 0], [231, 151, 1], [420, 163, 1], [binX, 250, 1], [binX, 250, 0]][p - 1];
       }
 
       function render() {
@@ -1236,6 +1254,9 @@
         item.style.opacity = o;
         verdict.textContent = dry ? 'DRY' : 'WET';
         verdict.setAttribute('fill', dry ? '#34d399' : '#f59e0b');
+        // moisture gauge: low and green for dry, high and amber for wet
+        gauge.style.transform = phase >= 3 && phase <= 4 ? `scaleX(${dry ? 0.25 : 0.9})` : 'scaleX(0)';
+        gauge.setAttribute('fill', dry ? '#34d399' : '#f59e0b');
         flap.style.transform = phase >= 4 ? `rotate(${dry ? -32 : 32}deg)` : 'none';
         svg.querySelectorAll('[data-step]').forEach(g => g.classList.toggle('on', +g.dataset.step === phase));
         ['w1', 'w2', 'w3', 'w4'].forEach((id, i) => document.getElementById(id).classList.toggle('live', phase === i + 2));
