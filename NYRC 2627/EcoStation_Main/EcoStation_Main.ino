@@ -61,7 +61,7 @@ const float ITEM_MIN_HEIGHT_CM = 1.5;  // item must be at least this much closer
 // Both resistive and capacitive modules read LOWER when wet. At boot the
 // station reads the dry, empty flap; an item counts as WET if the reading
 // drops more than MOISTURE_DROP below that. Calibrate: see WIRING.md section 4.
-const int  MOISTURE_DROP  = 400;       // 0..4095 scale. Smaller = more items called WET
+const int  MOISTURE_DROP  = 150;       // 0..4095 scale. Smaller = more items called WET (was 400; tomatoes read as dry)
 const bool MOISTURE_DEBUG = true;      // print the reading every 2 s on Serial Monitor
 
 // Bin geometry (cm) - measure your own dustbins!
