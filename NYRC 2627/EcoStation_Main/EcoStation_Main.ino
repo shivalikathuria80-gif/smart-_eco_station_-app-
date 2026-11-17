@@ -55,8 +55,8 @@ const char* STATION_ZONE  = "School Block A"; // shows under the bin card title
 const int   POINTS_PER_ITEM = 10;
 
 // Item detection (ultrasonic #3, pointing DOWN at the flap from above)
-const float ITEM_MIN_HEIGHT_CM = 1.5;  // item must be at least this much closer than the empty flap
-const int   ITEM_CONFIRM_READS = 3;    // this many readings IN A ROW must see the item (stops stray echoes)
+const float ITEM_MIN_HEIGHT_CM = 0.5;  // item must be at least this much closer than the empty flap (was 1.5; thin items like tissue were missed)
+const int   ITEM_CONFIRM_READS = 1;    // readings in a row that must see the item (1 = very lenient; raise to 2-3 if empty flap triggers)
 
 // Moisture sensor (on the flap, where the waste lands).
 // Both resistive and capacitive modules read LOWER when wet. At boot the
