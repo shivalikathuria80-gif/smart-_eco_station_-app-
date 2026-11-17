@@ -61,7 +61,7 @@ const float ITEM_MIN_HEIGHT_CM = 1.5;  // item must be at least this much closer
 // Both resistive and capacitive modules read LOWER when wet. At boot the
 // station reads the dry, empty flap; an item counts as WET if the reading
 // drops more than MOISTURE_DROP below that. Calibrate: see WIRING.md section 4.
-const int  MOISTURE_DROP  = 150;       // 0..4095 scale. Smaller = more items called WET (was 400; tomatoes read as dry)
+const int  MOISTURE_DROP  = 60;        // 0..4095 scale. Smaller = more items called WET (was 400, then 150; fruit still read as dry)
 const bool MOISTURE_DEBUG = true;      // print the reading every 2 s on Serial Monitor
 
 // Bin geometry (cm) - measure your own dustbins!
@@ -352,7 +352,9 @@ String detectWaste(int& moisture) {
   delay(ITEM_SETTLE_TIME);
   if (!itemOnFlap()) return "NONE";              // taken back off
 
+  // Take the wettest of 5 reads over ~1 s: a whole fruit only lightly touches the probe.
   moisture = readMoisture();
+  for (int i = 0; i < 4; i++) { delay(100); moisture = min(moisture, readMoisture()); }
   Serial.printf("[Moisture] item=%d dry-flap=%d wet-below=%d\n",
                 moisture, moistureDry, moistureDry - MOISTURE_DROP);
   return (moisture < moistureDry - MOISTURE_DROP) ? "WET" : "DRY";
