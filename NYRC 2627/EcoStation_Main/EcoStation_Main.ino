@@ -56,6 +56,7 @@ const int   POINTS_PER_ITEM = 10;
 
 // Item detection (ultrasonic #3, pointing DOWN at the flap from above)
 const float ITEM_MIN_HEIGHT_CM = 1.5;  // item must be at least this much closer than the empty flap
+const int   ITEM_CONFIRM_READS = 3;    // this many readings IN A ROW must see the item (stops stray echoes)
 
 // Moisture sensor (on the flap, where the waste lands).
 // Both resistive and capacitive modules read LOWER when wet. At boot the
@@ -321,8 +322,20 @@ float flapDistanceCm() {
   return readDistanceCm(ITEM_TRIG_PIN, ITEM_ECHO_PIN, flapEmptyCm);
 }
 
+// An item counts only if ITEM_CONFIRM_READS readings in a row are closer than
+// the empty flap. One stray echo (or a missed echo) is not enough.
 bool itemOnFlap() {
-  return flapDistanceCm() < flapEmptyCm - ITEM_MIN_HEIGHT_CM;
+  float limit = flapEmptyCm - ITEM_MIN_HEIGHT_CM;
+  for (int i = 0; i < ITEM_CONFIRM_READS; i++) {
+    float cm = flapDistanceCm();               // no echo -> returns flapEmptyCm (= nothing there)
+    if (cm >= limit) {
+      if (i > 0) Serial.printf("[Flap] stray echo ignored (%d of %d close), now=%.1f cm\n", i, ITEM_CONFIRM_READS, cm);
+      return false;
+    }
+    Serial.printf("[Flap] close reading %d/%d: now=%.1f cm  empty=%.1f cm  item-below=%.1f cm\n",
+                  i + 1, ITEM_CONFIRM_READS, cm, flapEmptyCm, limit);
+  }
+  return true;
 }
 
 // Average of 16 readings, 0 (very wet) .. 4095 (bone dry)
