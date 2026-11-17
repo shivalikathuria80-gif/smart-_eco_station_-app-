@@ -74,8 +74,8 @@ const int   FULL_ALERT_PERCENT = 90;
 // If the flap tilts the wrong way, swap SERVO_WET and SERVO_DRY.
 // If it hits the bin wall or buzzes at the end, move the angle 10 closer to 90.
 const int SERVO_CENTER  = 90;
-const int SERVO_WET     = 30;
-const int SERVO_DRY     = 150;
+const int SERVO_WET     = 150;   // swapped 2026-11-17: bins are placed reversed
+const int SERVO_DRY     = 30;
 const int SERVO_MIN_US  = 500;   // SG90 pulse range (0 deg .. 180 deg)
 const int SERVO_MAX_US  = 2400;
 const int SERVO_STEP_MS = 8;     // ms per degree: slow sweep = gentler on gears and on USB power
