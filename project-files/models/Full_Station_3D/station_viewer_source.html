@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Eco Station 3D</title>
+<style>
+:root{--bg:#eef1f4;--panel:#ffffffee;--ink:#1d2730;--muted:#5d6b78;--accent:#1f8a5b;--line:#d5dbe1;--lab:#ffffff;--labink:#1d2730}
+@media (prefers-color-scheme:dark){:root{--bg:#151a1f;--panel:#1f262dee;--ink:#e7edf2;--muted:#9aa8b5;--accent:#3ccf8e;--line:#34404b;--lab:#232b33;--labink:#e7edf2}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#labels{position:fixed;inset:0;pointer-events:none}
+.lab{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;background:var(--lab);color:var(--labink);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;box-shadow:0 1px 4px #0002}
+.lab::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:14px;background:var(--muted)}
+.lab b{color:var(--accent);margin-right:4px}
+.lab.hl{outline:2px solid var(--accent)}
+#panel{position:fixed;left:16px;top:16px;width:300px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;backdrop-filter:blur(6px)}
+#panel h1{font-size:16px;margin:0 0 2px}
+ol li span{color:var(--ink);font-weight:600}
+#panel .sub{color:var(--muted);font-size:12px;margin-bottom:8px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:7px;padding:4px 9px;cursor:pointer}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+#status{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:600;max-width:calc(100vw - 32px);text-align:center}
+#status small{display:block;color:var(--muted);font-weight:400}
+ol{margin:6px 0 0;padding-left:20px;font-size:12px;color:var(--muted)}
+ol li{cursor:pointer}
+ol li:hover{color:var(--ink)}
+#toggle{display:none}
+@media (max-width:640px){#panel{top:auto;bottom:80px;width:auto;right:16px;max-height:40vh;overflow:auto}#parts{display:none}}
+body.shot #panel{display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="panel">
+  <h1 id="title"></h1>
+  <div class="sub">Drag to rotate, scroll to zoom, right-drag to pan. Sizes in mm.</div>
+  <div class="row" id="extra">
+    <button id="play" class="on">Pause</button>
+    <button id="speed">Speed 1x</button>
+  </div>
+  <input id="t" type="range" min="0" max="10" step="0.01" value="0">
+  <div class="row">
+    <span style="color:var(--muted);font-size:12px">Walls</span>
+    <button data-w="solid">Solid</button><button data-w="glass" class="on">See-through</button><button data-w="off">Hidden</button>
+    <button id="lbl" class="on">Labels</button>
+  </div>
+  <ol id="parts"></ol>
+</div>
+<div id="status">Ready<small></small></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/exporters/STLExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/exporters/GLTFExporter.js"></script>
+<script>// Shared helpers for the Smart Eco Station 3D viewers (three.js r147, units = mm)
+(function(){
+const ES={};window.ES=ES;
+const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.6,metalness:.05},o));
+ES.M=M;
+ES.mat={
+  wall:M(0xf4f6f8,{transparent:true,opacity:.3,side:THREE.DoubleSide,depthWrite:false}),
+  acrylic:M(0xbfe6ff,{transparent:true,opacity:.16,roughness:.05,side:THREE.DoubleSide,depthWrite:false}),
+  frame:M(0x3c4650),steel:M(0xc9d1d8,{metalness:.9,roughness:.25}),plate:M(0x2f9e6b),
+  funnel:M(0xf0b429,{side:THREE.DoubleSide}),flap:M(0x2b7bb9),servo:M(0x2d5fd6),gear:M(0xffffff,{roughness:.4}),
+  pcb:M(0x1e1e1e),pcbBlue:M(0x1d4ed8),pcbGreen:M(0x0f7a4a),uno:M(0x00838f),probe:M(0xd8a640,{metalness:.7,roughness:.3}),
+  lens:M(0x111111,{roughness:.1}),led:M(0xff3b30),silver:M(0xb8c0c8,{metalness:.8,roughness:.3}),
+  bag:M(0x2c3a2f,{roughness:.35,transparent:true,opacity:.95}),wet:M(0x8a5a2b),dry:M(0xd9c59a),
+  outlet:M(0x9aa6b2,{side:THREE.DoubleSide}),binWet:M(0x2e9d57,{transparent:true,opacity:.45,side:THREE.DoubleSide,depthWrite:false}),
+  binDry:M(0x2f6fd0,{transparent:true,opacity:.45,side:THREE.DoubleSide,depthWrite:false}),
+  cabinet:M(0xe9edf1,{transparent:true,opacity:.28,side:THREE.DoubleSide,depthWrite:false}),
+  wood:M(0xc8a27a),solar:M(0x1b2a4a,{metalness:.4,roughness:.25}),beam:new THREE.MeshBasicMaterial({color:0x37d67a,transparent:true,opacity:.22,depthWrite:false}),
+  card:M(0xffffff),rfid:M(0x1565c0),dht:M(0xffffff),mq:M(0x8d99a6,{metalness:.6}),rain:M(0x3a3f45,{metalness:.5}),cable:M(0x222222)
+};
+const mat=ES.mat;
+ES.box=(w,h,d,m,x,y,z,parent)=>{const g=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);g.position.set(x||0,y||0,z||0);g.castShadow=g.receiveShadow=true;if(parent)parent.add(g);return g;};
+ES.cyl=(rt,rb,h,m,seg=24,open=false)=>{const g=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg,1,open),m);g.castShadow=true;return g;};
+ES.anchorAt=(parent,x,y,z)=>{const a=new THREE.Object3D();a.position.set(x,y,z);parent.add(a);return a;};
+const box=ES.box,cyl=ES.cyl,anchorAt=ES.anchorAt;
+ES.clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));ES.seg=(t,a,b)=>ES.clamp((t-a)/(b-a));ES.ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+const seg=ES.seg,ease=ES.ease;
+
+// ---------------- scene + UI ----------------
+ES.setup=function(cfg){
+  const canvas=document.getElementById('c');
+  const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputEncoding=THREE.sRGBEncoding;renderer.shadowMap.enabled=true;
+  const scene=new THREE.Scene();scene.background=new THREE.Color(dark?0x151a1f:0xeef1f4);
+  const camera=new THREE.PerspectiveCamera(35,1,1,20000);camera.position.set(...cfg.cam);
+  const controls=new THREE.OrbitControls(camera,canvas);controls.target.set(...cfg.target);controls.enableDamping=true;controls.update();
+  scene.add(new THREE.HemisphereLight(0xffffff,0x8899aa,.75));
+  const R=cfg.size||300;
+  const sun=new THREE.DirectionalLight(0xffffff,.85);sun.position.set(R,R*2,R*1.3);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);
+  Object.assign(sun.shadow.camera,{left:-R*1.3,right:R*1.3,top:R*1.3,bottom:-R*1.3,near:10,far:R*6});scene.add(sun);
+  const fill=new THREE.DirectionalLight(0xffffff,.3);fill.position.set(-R,R*.7,-R);scene.add(fill);
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(R*1.6,64),M(dark?0x20272e:0xdfe4e9,{roughness:1}));
+  floor.rotation.x=-Math.PI/2;floor.position.y=cfg.floorY||0;floor.receiveShadow=true;scene.add(floor);
+  const root=new THREE.Group();root.name=cfg.name;scene.add(root);
+  const fx=new THREE.Group();scene.add(fx);
+  const parts=[],walls=[];
+  const ctx={scene,camera,controls,renderer,root,fx,parts,walls,t:0,playing:true,speed:1,dur:cfg.dur,flags:{}};
+  ctx.part=(name,obj,anchor,note)=>{obj.name=name.replace(/[^A-Za-z0-9]+/g,'_');if(!obj.parent)root.add(obj);parts.push({name,obj,anchor,note});return obj;};
+  document.getElementById('title').textContent=cfg.title;
+  const slider=document.getElementById('t');slider.max=cfg.dur;
+  const playB=document.getElementById('play');
+  playB.onclick=()=>{ctx.playing=!ctx.playing;playB.textContent=ctx.playing?'Pause':'Play';playB.classList.toggle('on',ctx.playing);};
+  document.getElementById('speed').onclick=e=>{ctx.speed=ctx.speed===1?.5:ctx.speed===.5?2:1;e.target.textContent='Speed '+ctx.speed+'x';};
+  slider.oninput=()=>{ctx.t=+slider.value;};
+  (cfg.toggles||[]).forEach(tg=>{const b=document.createElement('button');const upd=()=>b.textContent=tg.label+': '+tg.values[ctx.flags[tg.key]];
+    ctx.flags[tg.key]=0;upd();b.onclick=()=>{ctx.flags[tg.key]=(ctx.flags[tg.key]+1)%tg.values.length;upd();};document.getElementById('extra').appendChild(b);});
+  document.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-w]').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    const m=b.dataset.w;walls.forEach(w=>{w.visible=m!=='off';});[mat.wall,mat.cabinet].forEach(mm=>{mm.opacity=m==='solid'?1:(mm===mat.wall?.3:.28);mm.transparent=m!=='solid';mm.depthWrite=m==='solid';mm.needsUpdate=true;});});
+  let showLabels=true;document.getElementById('lbl').onclick=e=>{showLabels=!showLabels;e.target.classList.toggle('on',showLabels);};
+  const statusEl=document.getElementById('status');
+  ctx.status=(a,b)=>{statusEl.innerHTML=a+'<small>'+(b||'')+'</small>';};
+  ctx.finish=function(update){
+    const labelsEl=document.getElementById('labels'),list=document.getElementById('parts');
+    parts.forEach((p,i)=>{const el=document.createElement('div');el.className='lab';el.innerHTML='<b>'+(i+1)+'</b>'+p.name;labelsEl.appendChild(el);p.el=el;
+      const li=document.createElement('li');li.innerHTML='<span>'+p.name+'</span>'+(p.note?': '+p.note:'');li.onmouseenter=()=>el.classList.add('hl');li.onmouseleave=()=>el.classList.remove('hl');list.appendChild(li);});
+    const v=new THREE.Vector3();
+    const place=()=>{parts.forEach(p=>{if(!showLabels){p.el.style.display='none';return;}p.anchor.getWorldPosition(v);v.project(camera);
+      p.el.style.display=v.z<1?'block':'none';p.el.style.left=((v.x+1)/2*innerWidth)+'px';p.el.style.top=((1-v.y)/2*innerHeight-14)+'px';});};
+    const resize=()=>{renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();};
+    addEventListener('resize',resize);resize();
+    let last=performance.now();
+    const loop=now=>{const dt=Math.min(.05,(now-last)/1000);last=now;if(ctx.playing){ctx.t=(ctx.t+dt*ctx.speed)%cfg.dur;slider.value=ctx.t;}
+      update(ctx.t);controls.update();renderer.render(scene,camera);place();requestAnimationFrame(loop);};
+    requestAnimationFrame(loop);
+    const b64=buf=>{const u=buf instanceof DataView?new Uint8Array(buf.buffer,buf.byteOffset,buf.byteLength):new Uint8Array(buf);let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);};
+    window.BS={
+      pose(time,o={}){ctx.playing=false;ctx.t=time;slider.value=time;Object.assign(ctx.flags,o.flags||{});if(o.cam)camera.position.set(...o.cam);if(o.target)controls.target.set(...o.target);
+        controls.update();update(time);renderer.render(scene,camera);place();},
+      exportAll(stls){return new Promise(res=>{update(cfg.exportT||0);fx.visible=false;root.updateMatrixWorld(true);const out={};const stl=new THREE.STLExporter();
+        out[cfg.file+'_full.stl']=b64(stl.parse(root,{binary:true}));
+        const sep=cfg.stls?cfg.stls():{};for(const k in sep){sep[k].updateMatrixWorld(true);out[k]=b64(stl.parse(sep[k],{binary:true}));}
+        new THREE.GLTFExporter().parse(root,glb=>{out[cfg.file+'.glb']=b64(glb);fx.visible=true;res(out);},e=>res({error:String(e)}),{binary:true});});}
+    };
+  };
+  return ctx;
+};
+
+// ---------------- LCD 16x2 with live text ----------------
+ES.lcd=function(color){
+  const g=new THREE.Group();
+  box(80,36,8,mat.pcbGreen,0,0,0,g);box(72,25,3,M(0x222222),0,0,4.5,g);
+  const cv=document.createElement('canvas');cv.width=512;cv.height=128;const c2=cv.getContext('2d');
+  const tex=new THREE.CanvasTexture(cv);tex.encoding=THREE.sRGBEncoding;
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(64,16),new THREE.MeshBasicMaterial({map:tex}));scr.position.z=6.1;g.add(scr);
+  let lastTxt='';
+  g.userData.set=(a,b)=>{const k=a+'|'+b;if(k===lastTxt)return;lastTxt=k;c2.fillStyle=color||'#3b7bff';c2.fillRect(0,0,512,128);
+    c2.fillStyle='#e8f1ff';c2.font='bold 50px monospace';c2.textBaseline='top';c2.fillText(a.slice(0,16),12,8);c2.fillText((b||'').slice(0,16),12,66);tex.needsUpdate=true;};
+  g.userData.set('','');return g;
+};
+
+// ---------------- HC-SR04 ultrasonic + beam ----------------
+ES.ultrasonic=function(){ // faces -y (down) by default
+  const g=new THREE.Group();box(45,1.6,20,mat.pcbBlue,0,0,0,g);
+  [-13,13].forEach(x=>{const c=cyl(8,8,12,mat.silver,20);c.position.set(x,-7,0);g.add(c);});
+  const beam=new THREE.Mesh(new THREE.ConeGeometry(30,1,24,1,true),mat.beam);beam.rotation.x=Math.PI;beam.position.y=-13;beam.visible=false;g.add(beam);
+  g.userData.beam=(len,on)=>{beam.visible=on;beam.scale.set(len/300+.2,len,len/300+.2);beam.position.y=-13-len/2;};
+  return g;
+};
+
+// ---------------- SG90 ----------------
+ES.sg90=function(){const g=new THREE.Group();box(22.8,22.5,12.2,mat.servo,0,0,0,g);box(32.5,2.5,12.2,mat.servo,0,4,0,g);
+  const s=cyl(2.4,2.4,5,mat.gear,12);s.position.set(-5.5,13.5,0);g.add(s);return g;}; // shaft points +y
+
+// ---------------- bag splitter (same as Bag_Splitter_3D) ----------------
+// origin = bottom centre of the 180x170x330 box. Returns handles.
+ES.splitter=function(parent,opts={}){
+  const W=180,D=170,H=330,T=4,HINGE_Y=192,HINGE_Z=-D/2+12,FLAP_Y=75,BB=156,BH=20;
+  const g=new THREE.Group();parent.add(g);const walls=[];
+  const housing=new THREE.Group();g.add(housing);
+  const hw=(w,h,d,x,y,z,m=mat.wall)=>{const b=box(w,h,d,m,x,y,z,housing);b.castShadow=false;walls.push(b);return b;};
+  hw(T,H,D,-W/2+T/2,H/2,0);hw(T,H,D,W/2-T/2,H/2,0);hw(W,H,T,0,H/2,-D/2+T/2);hw(W,H,T,0,H/2,D/2-T/2,mat.acrylic);
+  hw(W,T,D/2-20,0,T/2,-(20+(D/2-20)/2));hw(W,T,D/2-20,0,T/2,(20+(D/2-20)/2));hw(20,T,40,-80,T/2,0);hw(60,T,40,0,T/2,0);hw(20,T,40,80,T/2,0);
+  const LY=H-T/2;hw(30,T,D,-75,LY,0);hw(30,T,D,75,LY,0);hw(120,T,45,0,LY,-62.5);hw(120,T,10,0,LY,80);
+  box(T,36,D-2*T,mat.frame,0,T+18,0,housing);
+  const mouth=cyl(95,70,18,M(0x3c4650,{side:THREE.DoubleSide}),4,true);mouth.rotation.y=Math.PI/4;mouth.scale.set(1,1,.85);mouth.position.set(0,H+9,17.5);g.add(mouth);
+  // camera
+  const cam=new THREE.Group();const cb=new THREE.Group();box(4,40,27,mat.pcb,0,0,0,cb);
+  const lens=cyl(4.5,4.5,6,mat.lens,20);lens.rotation.z=Math.PI/2;lens.position.set(5,6,0);cb.add(lens);
+  const ledMat=M(0xff3b30);const led=cyl(2,2,2,ledMat,12);led.rotation.z=Math.PI/2;led.position.set(3,-8,6);cb.add(led);
+  box(10,6,30,mat.frame,-5,22,0,cb);cb.rotation.z=-.75;cam.add(cb);cam.position.set(-W/2+T+8,H-40,10);g.add(cam);
+  // press
+  const pressG=new THREE.Group();g.add(pressG);
+  const press=new THREE.Group();press.position.set(0,HINGE_Y,HINGE_Z);pressG.add(press);
+  box(150,6,128,mat.plate,0,0,70,press);for(let x=-48;x<=48;x+=24)box(3,5,118,mat.frame,x+12,-5.5,72,press);box(150,10,10,mat.plate,0,0,6,press);
+  const rod=cyl(3,3,W+14,mat.steel,16);rod.rotation.z=Math.PI/2;rod.position.set(7,HINGE_Y,HINGE_Z);pressG.add(rod);
+  const gearG=new THREE.Group();g.add(gearG);
+  const gear=(r,n,th)=>{const q=new THREE.Group();const c=cyl(r,r,th,mat.gear,32);c.rotation.z=Math.PI/2;q.add(c);
+    for(let i=0;i<n;i++){const a=i/n*Math.PI*2;const t=box(th,3,3.2,mat.gear,0,Math.cos(a)*(r+1.2),Math.sin(a)*(r+1.2),q);t.rotation.x=-a;}return q;};
+  const big=gear(16,24,4);big.position.set(W/2+3,HINGE_Y,HINGE_Z);gearG.add(big);
+  const small=gear(8,12,4);small.position.set(W/2+3,HINGE_Y,HINGE_Z+26.5);gearG.add(small);
+  const sv=new THREE.Group();box(22.5,12.2,22.8,mat.servo,0,0,0,sv);box(2.5,12.2,32.5,mat.servo,-6,0,0,sv);sv.position.set(W/2+19,HINGE_Y,HINGE_Z+32);gearG.add(sv);
+  // blades
+  const blades=new THREE.Group();g.add(blades);
+  const sh=new THREE.Shape();const L=150,N=6,tw=L/N;sh.moveTo(-L/2,0);for(let i=0;i<N;i++){sh.lineTo(-L/2+i*tw+tw/2,BH);sh.lineTo(-L/2+(i+1)*tw,0);}sh.lineTo(-L/2,0);
+  const bg=new THREE.ExtrudeGeometry(sh,{depth:1.5,bevelEnabled:false});bg.translate(0,0,-.75);bg.rotateY(Math.PI/2);
+  [-60,-36,-12,12,36,60].forEach(x=>{const b=new THREE.Mesh(bg,mat.steel);b.position.set(x,BB,0);b.castShadow=true;blades.add(b);box(6,6,D-2*T,mat.frame,x,BB-3,0,blades);});
+  box(W-2*T,6,8,mat.frame,0,BB-3,-D/2+T+4,blades);box(W-2*T,6,8,mat.frame,0,BB-3,D/2-T-4,blades);
+  // funnel
+  const fn=cyl(84*Math.SQRT2,35*Math.SQRT2,50,mat.funnel,4,true);fn.rotation.y=Math.PI/4;fn.position.y=125;fn.scale.set(1,1,.95);g.add(fn);
+  // flap + moisture
+  const flapG=new THREE.Group();g.add(flapG);
+  const flap=new THREE.Group();flap.position.set(0,FLAP_Y,0);flapG.add(flap);
+  box(124,4,110,mat.flap,0,0,0,flap);box(124,8,3,mat.flap,0,4,-55,flap);box(124,8,3,mat.flap,0,4,55,flap);
+  const sensor=new THREE.Group();box(20,2,14,mat.pcb,0,3,-20,sensor);[-5,5].forEach(x=>box(3.5,1,30,mat.probe,x,2.5,2,sensor));flap.add(sensor);
+  const ax=cyl(2.5,2.5,D-2*T,mat.steel,12);ax.rotation.x=Math.PI/2;flap.add(ax);
+  const fs=new THREE.Group();box(12.2,22.8,22.5,mat.servo,0,0,0,fs);box(12.2,32.5,2.5,mat.servo,0,0,6,fs);fs.position.set(0,FLAP_Y+5.5,-D/2-12);flapG.add(fs);
+  // "eyes" ultrasonic on back wall above the flap, looking down
+  const eyes=ES.ultrasonic();eyes.position.set(0,FLAP_Y+60,-D/2+T+14);eyes.rotation.x=0.35;g.add(eyes);
+  const OPEN=-88*Math.PI/180;
+  return {g,walls,press,big,small,flap,ledMat,sensor,eyes,cam,mouth,blades,fn,flapG,pressG,gearG,housing,OPEN,
+    dims:{W,D,H,HINGE_Y,HINGE_Z,FLAP_Y,TOP:BB+BH},
+    setPress(k){const a=OPEN*(1-k);press.rotation.x=a;big.rotation.x=a;small.rotation.x=-2*a;return HINGE_Y+Math.sin(-a)*(10-HINGE_Z)-8;},
+    setFlap(tilt){flap.rotation.z=tilt;},
+    camLed(on){ledMat.emissive.setHex(on?0xff2a1a:0);},
+    anchors:{slot:anchorAt(g,0,H+22,17.5),cam:anchorAt(cam,0,12,0),plate:anchorAt(press,0,6,95),servo:anchorAt(gearG,W/2+20,HINGE_Y+12,HINGE_Z+30),
+      blades:anchorAt(blades,36,BB+BH+4,40),funnel:anchorAt(g,60,140,60),flap:anchorAt(flapG,-55,FLAP_Y+6,-40),moist:anchorAt(flap,0,6,0),eyes:anchorAt(eyes,0,4,0)}};
+};
+
+// ---------------- scissor compactor ----------------
+// Two plates: fixed top plate (on bin frame) + press plate, joined by a 3-stage scissor. SG90 opens the scissor.
+// o: {w,d,topY,L,stages,minDeg,maxDeg}
+ES.compactor=function(parent,o){
+  const g=new THREE.Group();parent.add(g);
+  const L=o.L,S=o.stages,PT=8;
+  const top=new THREE.Group();g.add(top);
+  box(o.w+30,PT,o.d+30,mat.frame,0,o.topY+PT/2,0,top);
+  const plate=new THREE.Group();g.add(plate);
+  box(o.w,PT,o.d,mat.plate,0,-PT/2,0,plate);box(50,PT+1,26,M(0x1a2a22),0,-PT/2,0,plate); // sensor window
+  for(let x=-o.w/2+20;x<=o.w/2-20;x+=40)box(4,6,o.d-10,mat.frame,x,-PT-3,0,plate); // ribs
+  const arms=[];const zs=[-o.d/2+18,o.d/2-18];
+  zs.forEach(z=>{for(let i=0;i<S;i++)[1,-1].forEach(s=>{const a=box(L,6,4,mat.steel,0,0,z+s*3,g);a.userData={i,s};arms.push(a);});});
+  const pins=[];for(let i=0;i<=S;i++)[-1,1].forEach(s=>{const p=cyl(3,3,o.d-30,mat.frame,10);p.rotation.x=Math.PI/2;g.add(p);pins.push({p,i,s});});
+  const servo=ES.sg90();servo.rotation.x=Math.PI/2;g.add(servo);
+  const fill=ES.ultrasonic();fill.position.set(0,o.topY-2,0);g.add(fill);
+  const minA=(o.minDeg||12)*Math.PI/180,maxA=(o.maxDeg||70)*Math.PI/180;
+  const api={g,plate,top,fill,servo,arms,
+    set(k){const a=minA+(maxA-minA)*k;const h=L*Math.sin(a),w=L*Math.cos(a);
+      arms.forEach(m=>{const{i,s}=m.userData;m.position.set(0,o.topY-h*(i+.5),m.position.z);m.rotation.z=s*a;});
+      pins.forEach(({p,i,s})=>{p.position.set(s*w/2,o.topY-h*i,0);});
+      plate.position.set(0,o.topY-h*S,0);
+      servo.position.set(-w/2,o.topY-8,-o.d/2-4);servo.rotation.z=a;
+      return o.topY-h*S-PT; },
+    anchors:{plate:anchorAt(plate,o.w/2-10,0,o.d/2),top:anchorAt(top,-o.w/2,o.topY+PT,o.d/2),fill:anchorAt(fill,0,2,-12),servo:anchorAt(servo,0,0,0)}};
+  api.set(0);return api;
+};
+
+// ---------------- loose waste pile that grows ----------------
+ES.pile=function(parent,w,d,y0,m){ // returns set(height) -> pile top
+  const g=new THREE.Group();parent.add(g);
+  const body=box(w,1,d,m,0,0,0,g);
+  const lumps=[];const r=(a=>()=>{a=(a*9301+49297)%233280;return a/233280;})(11);
+  for(let i=0;i<26;i++){const s=new THREE.Mesh(new THREE.DodecahedronGeometry(10+r()*12),m);s.position.set((r()-.5)*(w-30),0,(r()-.5)*(d-30));s.userData.o=r()*10;s.castShadow=true;g.add(s);lumps.push(s);}
+  return {g,set(h,squash){h=Math.max(1,h);body.scale.y=h;body.position.y=y0+h/2;lumps.forEach(l=>{l.position.y=y0+h+l.userData.o*(1-squash)-4;l.scale.y=1-.7*squash;});}};
+};
+})();
+</script>
+<script>(function(){
+const {mat,box,cyl,anchorAt,seg,ease,clamp,M}=ES;
+const ctx=ES.setup({name:'SmartEcoStation',title:'Smart Eco Station: full model',file:'smart_eco_station',dur:20,cam:[1250,1150,1600],target:[60,560,0],size:900,
+  toggles:[{key:'waste',label:'Waste',values:['WET','DRY']}]});
+const {root,fx,part,walls}=ctx;
+const CW=660,CD=400,CH=640,T=6,HEADY=CH;
+// ---------- cabinet ----------
+const cab=new THREE.Group();root.add(cab);
+const cw=(w,h,d,x,y,z,m=mat.cabinet)=>{const b=box(w,h,d,m,x,y,z,cab);b.castShadow=false;walls.push(b);return b;};
+cw(T,CH,CD,-CW/2+T/2,CH/2,0);cw(T,CH,CD,CW/2-T/2,CH/2,0);cw(CW,CH,T,0,CH/2,-CD/2+T/2);cw(CW,CH,T,0,CH/2,CD/2-T/2,mat.acrylic);
+box(CW,T,CD,mat.wood,0,T/2,0,cab);
+box((CW/2-75),T,CD,mat.wood,-(75+(CW/2-75)/2),CH-T/2,0,cab);box((CW/2-75),T,CD,mat.wood,(75+(CW/2-75)/2),CH-T/2,0,cab);
+box(150,T,CD/2-85,mat.wood,0,CH-T/2,-(85+(CD/2-85)/2),cab);box(150,T,CD/2-85,mat.wood,0,CH-T/2,(85+(CD/2-85)/2),cab);
+part('Station cabinet (660 x 400 x 640)',cab,anchorAt(cab,-CW/2,CH*.85,CD/2),'Clear front so judges can see inside');
+// ---------- bins + compactors ----------
+const BW=260,BD=340,BH=520,BT=4;
+function bin(x,name,bm,wm,lv){
+  const g=new THREE.Group();g.position.set(x,T,0);root.add(g);
+  const bg=new THREE.Group();g.add(bg);
+  const bw=(w,h,d,px,py,pz)=>{const b=box(w,h,d,bm,px,py,pz,bg);b.castShadow=false;walls.push(b);};
+  bw(BT,BH,BD,-BW/2+BT/2,BH/2,0);bw(BT,BH,BD,BW/2-BT/2,BH/2,0);bw(BW,BH,BT,0,BH/2,-BD/2+BT/2);bw(BW,BH,BT,0,BH/2,BD/2-BT/2);box(BW,BT,BD,bm,0,BT/2,0,bg);
+  box(BW+2,2,2,new THREE.MeshBasicMaterial({color:0xff5a36}),0,BT+(BH-BT)*.7,BD/2+1,bg);
+  const comp=ES.compactor(g,{w:BW-40,d:BD-30,topY:600-T,L:125,stages:3,minDeg:12,maxDeg:70});
+  const pile=ES.pile(g,BW-2*BT-2,BD-2*BT-2,BT,wm);
+  return {g,bg,comp,pile,x,lv0:lv,name};
+}
+const bins=[bin(-185,'WET',mat.binWet,mat.wet,.4),bin(185,'DRY',mat.binDry,mat.dry,.4)];
+part('WET bin (left)',bins[0].bg,anchorAt(bins[0].bg,-BW/2+30,BH*.35,BD/2),'Red line = 70% full');
+part('DRY bin (right)',bins[1].bg,anchorAt(bins[1].bg,BW/2-30,BH*.35,BD/2),'Red line = 70% full');
+part('Scissor compactor (each bin)',bins[0].comp.plate,bins[0].comp.anchors.plate,'SG90 + two plates + scissor; starts at 70%');
+part('Fill sensors HC-SR04 (each bin)',bins[1].comp.fill,anchorAt(bins[1].comp.fill,0,2,-12),'Measure how full each bin is');
+// ---------- chutes ----------
+const chutes=new THREE.Group();root.add(chutes);
+[-1,1].forEach(s=>{const a=new THREE.Vector3(s*50,HEADY,0),b=new THREE.Vector3(s*85,470,0);const len=a.distanceTo(b);
+  const c=cyl(34,34,len,mat.outlet,4,true);c.rotation.y=Math.PI/4;const q=new THREE.Group();q.add(c);q.position.copy(a.clone().add(b).multiplyScalar(.5));
+  q.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),a.clone().sub(b).normalize());chutes.add(q);});
+part('Chutes to the bins',chutes,anchorAt(chutes,-70,560,30),'Left = WET, right = DRY');
+// ---------- sorting head (bag splitter) ----------
+const head=new THREE.Group();head.position.y=HEADY;root.add(head);
+const sp=ES.splitter(head);sp.walls.forEach(w=>walls.push(w));
+part('Drop slot',sp.mouth,sp.anchors.slot,'Opens to the user after the RFID tap');
+part('ESP32-CAM',sp.cam,sp.anchors.cam,'Watches the waste: sees closed bags and dry items');
+part('Bag splitter (press + blades)',sp.pressG,sp.anchors.plate,'Splits sealed bags so the sensor can read the waste');
+part('Ultrasonic "eyes"',sp.eyes,sp.anchors.eyes,'Detects that waste is on the flap (TRIG 26 / ECHO 35)');
+part('Moisture sensor on SG90 flap',sp.flapG,sp.anchors.moist,'Decides WET or DRY, then the flap tips');
+// ---------- control panel: RFID + LCD1 ----------
+const panel=new THREE.Group();panel.position.set(-210,HEADY,140);root.add(panel);
+const pb=new THREE.Group();panel.add(pb);box(190,14,110,mat.frame,0,7,0,pb);pb.rotation.x=0;
+const kiosk=new THREE.Group();kiosk.position.set(0,0,0);panel.add(kiosk);
+box(190,120,16,mat.frame,0,60,-30,kiosk);kiosk.rotation.x=-0.35;
+const rfid=new THREE.Group();box(60,2,40,mat.rfid,0,0,0,rfid);
+const coil=new THREE.Mesh(new THREE.TorusGeometry(14,1.2,6,24),mat.probe);coil.rotation.x=Math.PI/2;coil.position.y=1.5;rfid.add(coil);
+rfid.rotation.x=Math.PI/2;rfid.position.set(-45,55,-21);kiosk.add(rfid);
+const lcd1=ES.lcd('#3b7bff');lcd1.position.set(45,60,-18);kiosk.add(lcd1);
+part('RFID reader (RC522)',rfid,anchorAt(rfid,0,2,22),'Tap your card to start');
+part('LCD 1 (cards, waste, points)',lcd1,anchorAt(lcd1,0,22,0),'I2C 0x27');
+// ---------- ESP32 DevKit box ----------
+const elec=new THREE.Group();elec.position.set(220,HEADY,-95);root.add(elec);
+const eb=box(200,50,120,mat.acrylic,0,25,0,elec);walls.push(eb);
+box(165,9,55,M(0xf5f5f5),0,5,15,elec);
+const dev=new THREE.Group();box(52,2,28,mat.pcb,0,0,0,dev);box(18,3,25,mat.silver,14,2,0,dev);box(8,3,8,mat.silver,-25,2,0,dev);
+dev.position.set(-30,18,-30);elec.add(dev);
+for(let i=0;i<9;i++){const w=new THREE.Mesh(new THREE.CylinderGeometry(.8,.8,40,6),M([0xe53935,0x1e88e5,0xfdd835,0x43a047,0x212121][i%5]));w.rotation.z=Math.PI/2;w.rotation.y=(i-4)*.12;w.position.set(10,14,-5+i*3);elec.add(w);}
+part('ESP32 DevKit + breadboard',dev,anchorAt(dev,0,4,0),'The brain: RFID, LCDs, servos, sensors, Wi-Fi to Firebase');
+// laptop + USB cable
+const lap=new THREE.Group();lap.position.set(560,0,160);lap.rotation.y=-0.5;lap.scale.setScalar(.65);root.add(lap);
+box(320,16,220,M(0x9aa3ad),0,8,0,lap);const scr=box(320,210,8,M(0x2a2f36),0,120,-110,lap);scr.rotation.x=-0.25;
+const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(250,HEADY+20,-155),new THREE.Vector3(340,HEADY+10,-160),new THREE.Vector3(360,300,-100),new THREE.Vector3(430,20,100),new THREE.Vector3(470,11,150)]);
+const usb=new THREE.Mesh(new THREE.TubeGeometry(curve,40,3,8),mat.cable);root.add(usb);
+part('Computer USB (powers ESP32)',lap,anchorAt(lap,0,240,-110),'5 V from the laptop USB port');
+// ---------- weather unit (Arduino Uno) ----------
+const wx=new THREE.Group();wx.position.set(220,HEADY,95);root.add(wx);
+const wb=box(200,80,110,M(0xdfe6ec),0,40,0,wx);
+const uno=new THREE.Group();box(68,2,53,mat.uno,0,0,0,uno);box(12,10,16,mat.silver,-30,6,-14,uno);uno.position.set(-50,83,-15);wx.add(uno);
+const lcd2=ES.lcd('#1f8a4c');lcd2.position.set(30,45,59);wx.add(lcd2);
+const dht=new THREE.Group();box(15,25,8,mat.dht,0,0,0,dht);for(let i=0;i<4;i++)box(12,1,6,M(0xcfd8dc),0,-8+i*5,4.5,dht);dht.position.set(104,50,20);dht.rotation.y=Math.PI/2;wx.add(dht);
+const mq=new THREE.Group();box(32,2,22,mat.pcbBlue,0,0,0,mq);const mc=cyl(10,10,14,mat.mq,20);mc.position.y=8;mq.add(mc);mq.rotation.z=-Math.PI/2;mq.position.set(101,40,-30);wx.add(mq);
+const pole=cyl(3,3,90,mat.frame,8);pole.position.set(40,125,-20);wx.add(pole);
+const rain=new THREE.Group();box(54,2,40,mat.rain,0,0,0,rain);for(let i=0;i<6;i++)box(48,2.4,1.5,mat.probe,0,.4,-15+i*6,rain);rain.position.set(40,172,-20);rain.rotation.x=.35;wx.add(rain);
+part('Arduino Uno weather box',uno,anchorAt(uno,0,4,0),'Separate board, its own USB power');
+part('LCD 2 (weather)',lcd2,anchorAt(lcd2,0,22,0),'Temperature, humidity, rain, air');
+part('DHT22 temp + humidity',dht,anchorAt(dht,0,15,0),'');
+part('MQ-135 air quality',mq,anchorAt(mq,0,18,0),'Relative index: GOOD / MODERATE / POOR');
+part('Rain sensor plate',rain,anchorAt(rain,0,6,0),'DRY / DRIZZLE / RAINING');
+// ---------- solar panel (display only) ----------
+const sol=new THREE.Group();sol.position.set(-230,HEADY,-150);root.add(sol);
+const mast=cyl(5,5,420,mat.frame,10);mast.position.y=210;sol.add(mast);
+const pan=new THREE.Group();box(300,8,200,mat.silver,0,0,0,pan);
+for(let i=0;i<6;i++)for(let j=0;j<4;j++)box(46,9,46,mat.solar,-125+i*50,0.6,-75+j*50,pan);
+pan.position.y=430;pan.rotation.x=0.5;sol.add(pan);
+part('Solar panel (display only)',pan,anchorAt(pan,0,10,-100),'Not wired: explains how a real station would run');
+
+// ---------- moving items ----------
+const card=box(54,1.5,86,mat.card,0,0,0,fx);
+const bag=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),mat.bag);fx.add(bag);
+const torn=new THREE.Group();fx.add(torn);
+[-1,1].forEach(s=>{const h=new THREE.Mesh(new THREE.SphereGeometry(1,24,12,0,Math.PI),mat.bag);h.rotation.y=s>0?Math.PI/2:-Math.PI/2;h.scale.set(40,7,26);h.userData.s=s;torn.add(h);});
+const bits=[];const rnd=(a=>()=>{a=(a*9301+49297)%233280;return a/233280;})(7);
+for(let i=0;i<10;i++){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(5+rnd()*3),mat.wet);m.userData={x0:(rnd()-.5)*70,z0:(rnd()-.5)*60,gap:[-48,-24,0,24,48][i%5],fx:(rnd()-.5)*40,fz:(rnd()-.5)*50,d:rnd()*.4,j:(rnd()-.5)*120};fx.add(m);bits.push(m);}
+const D=sp.dims,TOP=D.TOP;
+
+ctx.finish(function(t){
+  const wetMode=ctx.flags.waste===0;const side=wetMode?-1:1;const B=wetMode?bins[0]:bins[1],O=wetMode?bins[1]:bins[0];
+  const u=t-1.5;  // splitter local time
+  // card tap
+  const cp=ease(seg(t,0,1.1))*(1-seg(t,1.6,2.2));
+  const kw=new THREE.Vector3(-45,55,40);kiosk.localToWorld(kw);
+  card.position.set(kw.x,kw.y+160*(1-cp),kw.z+120*(1-cp));card.rotation.x=Math.PI/2-.35;card.visible=t<2.2;
+  // splitter
+  const k=ease(seg(u,1.6,3.0))*(1-ease(seg(u,3.7,4.8)));const plateY=sp.setPress(k);
+  sp.camLed(u>1.1&&u<1.6);
+  const hB=Math.min(48,Math.max(8,plateY-TOP));const drop=ease(seg(u,0,1));
+  bag.visible=u>0&&u<3.25;bag.position.set(0,HEADY+(drop<1?420+(TOP+24-420)*drop:TOP+hB/2),10);bag.scale.set(52+(48-hB)*.35,hB/2,42);
+  torn.visible=u>=3.25&&t<17;torn.position.set(0,HEADY+TOP+3,10);torn.children.forEach(h=>{h.position.x=h.userData.s*(18+10*seg(u,3.25,4.5));});
+  const tilt=-side*.52*(ease(seg(u,6.4,7.0))-ease(seg(u,7.8,8.5)));sp.setFlap(tilt);
+  sp.eyes.userData.beam(45,u>5.3&&u<6.4);
+  // bin levels
+  const add=.05*seg(u,9.0,9.6);
+  const kc=ease(seg(t,11.5,13))*(1-ease(seg(t,13.6,15)));
+  bins.forEach(b=>{const isB=b===B;let lv=isB?.66+add:.40;const pb=b.comp.set(isB?kc:0);const full=BT+(BH-BT)*lv,low=BT+(BH-BT)*.46;let top=full,sq=0;
+    if(isB&&t>=11.5){top=t>13.2?low:clamp(Math.min(full,pb),low,full);sq=clamp((full-top)/(full-low));}
+    b.pile.set(top-BT,sq);b.level=Math.round((top-BT)/(BH-BT)*100);
+    b.comp.fill.userData.beam(Math.max(10,600-T-15-(top+10)),Math.floor(t*2)%2===0&&kc<.01);});
+  // bits
+  bits.forEach(b=>{const q=b.userData;b.material=wetMode?mat.wet:mat.dry;let x,y,z,s=1;const f1=seg(u,3.8+q.d,4.5+q.d),f2=seg(u,4.5+q.d,5.4+q.d);
+    if(u<3.8+q.d){x=q.x0*.6;y=TOP+6;z=10+q.z0*.4;s=u<3.25?0:1;}
+    else if(f2<=0){x=q.x0*.6+(q.gap-q.x0*.6)*f1;y=TOP+6-(TOP+6-130)*f1*f1;z=10+q.z0*.4;}
+    else{x=q.gap+(q.fx*.8-q.gap)*f2;y=130-(130-(D.FLAP_Y+7))*f2;z=(10+q.z0*.4)+(q.fz*.6-(10+q.z0*.4))*f2;}
+    if(u>6.4){const p=new THREE.Vector3(q.fx*.8,7,q.fz*.6);p.applyAxisAngle(new THREE.Vector3(0,0,1),tilt);x=p.x;y=D.FLAP_Y+p.y;z=p.z;
+      const a1=seg(u,6.9,7.6);if(a1>0){x+=(side*50-x)*a1;y+=(0-y)*a1;z*=1-a1*.6;}}
+    y+=HEADY;
+    if(u>7.6){const a2=seg(u,7.6,8.4),a3=seg(u,8.4+q.d*.5,9.0+q.d*.5);x=side*(50+35*a2);y=HEADY-(HEADY-470)*a2;
+      if(a3>0){const pt=BT+T+(BH-BT)*.66;x=side*(85+(100+q.j*.4)*a3);y=470-(470-pt)*a3*a3;}if(u>9.0+q.d*.5)s=0;}
+    b.position.set(x,y,z);b.scale.setScalar(s);});
+  // LCDs
+  const pts=u>9.6?'+10 pts  (30)':'';
+  let l1a='Tap your card',l1b='Smart Eco Stn';
+  if(t>1.1){l1a='Hi STUDENT 1';l1b='Drop waste in';}
+  if(u>1.1){l1a='Bag detected';l1b='Splitting...';}
+  if(u>5.3){l1a='Reading waste';l1b='';}
+  if(u>5.9){l1a='Waste: '+(wetMode?'WET':'DRY');l1b='Sorting...';}
+  if(u>9.6){l1a='Thank you!';l1b=pts;}
+  if(t>11.4&&t<15.2){l1a=B.name+' bin 70%';l1b='Compacting...';}
+  if(t>=15.2){l1a='Tap your card';l1b='WET '+bins[0].level+'% DRY '+bins[1].level+'%';}
+  lcd1.userData.set(l1a,l1b);
+  lcd2.userData.set(...(Math.floor(t/4)%2?['Rain: DRY','Air: GOOD']:['Temp 28.4 C','Humidity 61%']));
+  // status
+  const S=[[0,'1. Tap your RFID card','ESP32 looks up the card in Firebase, LCD says hi'],[1.5,'2. Drop the waste in','The bag falls onto the splitter'],
+    [2.6,'3. ESP32-CAM sees a sealed bag','So the splitter starts'],[3.1,'4. Bag splitter presses','Press plate pushes the bag onto the blades'],
+    [5.2,'5. Waste falls onto the flap','The ultrasonic "eyes" confirm something is there'],[7.0,'6. Moisture sensor decides','WASTE'],
+    [8.0,'7. Flap tips, waste slides down the chute','Into the '+(wetMode?'WET (left)':'DRY (right)')+' bin'],[11.1,'8. Points added','Card gets +10 points on the website'],
+    [11.4,'9. Bin passed 70%: compactor runs','Scissor press squeezes it down to about 46%'],[15.2,'10. Ready for the next user','Weather box keeps showing live readings on LCD 2']];
+  let c=S[0];S.forEach(s=>{if(t>=s[0])c=s;});
+  ctx.status(c[1],c[2]==='WASTE'?(wetMode?'Reading dropped: WET':'No moisture: DRY'):c[2]);
+});
+})();
+</script>
+</body>
+</html>

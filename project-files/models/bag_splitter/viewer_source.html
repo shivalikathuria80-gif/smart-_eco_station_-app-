@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bag Splitter 3D</title>
+<style>
+:root{--bg:#eef1f4;--panel:#ffffffee;--ink:#1d2730;--muted:#5d6b78;--accent:#1f8a5b;--line:#d5dbe1;--lab:#ffffff;--labink:#1d2730}
+@media (prefers-color-scheme:dark){:root{--bg:#151a1f;--panel:#1f262dee;--ink:#e7edf2;--muted:#9aa8b5;--accent:#3ccf8e;--line:#34404b;--lab:#232b33;--labink:#e7edf2}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;overflow:hidden}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+#labels{position:fixed;inset:0;pointer-events:none}
+.lab{position:absolute;transform:translate(-50%,-100%);white-space:nowrap;background:var(--lab);color:var(--labink);border:1px solid var(--line);border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;box-shadow:0 1px 4px #0002}
+.lab::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:14px;background:var(--muted)}
+.lab b{color:var(--accent);margin-right:4px}
+.lab.hl{outline:2px solid var(--accent)}
+#panel{position:fixed;left:16px;top:16px;width:300px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;backdrop-filter:blur(6px)}
+#panel h1{font-size:16px;margin:0 0 2px}
+#panel .sub{color:var(--muted);font-size:12px;margin-bottom:8px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:6px 0}
+button{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:7px;padding:4px 9px;cursor:pointer}
+button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+#status{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:600;max-width:calc(100vw - 32px);text-align:center}
+#status small{display:block;color:var(--muted);font-weight:400}
+ol{margin:6px 0 0;padding-left:20px;font-size:12px;color:var(--muted)}
+ol li{cursor:pointer}
+ol li:hover{color:var(--ink)}
+#toggle{display:none}
+@media (max-width:640px){#panel{top:auto;bottom:80px;width:auto;right:16px;max-height:40vh;overflow:auto}#parts{display:none}}
+body.shot #panel{display:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="panel">
+  <h1>Smart Eco Station: bag splitter</h1>
+  <div class="sub">Drag to rotate, scroll to zoom, right-drag to pan. Sizes in mm.</div>
+  <div class="row">
+    <button id="play" class="on">Pause</button>
+    <button id="speed">Speed 1x</button>
+    <button id="waste">Waste: WET</button>
+  </div>
+  <input id="t" type="range" min="0" max="10" step="0.01" value="0">
+  <div class="row">
+    <span style="color:var(--muted);font-size:12px">Walls</span>
+    <button data-w="solid">Solid</button><button data-w="glass" class="on">See-through</button><button data-w="off">Hidden</button>
+    <button id="lbl" class="on">Labels</button>
+  </div>
+  <ol id="parts"></ol>
+</div>
+<div id="status">Ready<small></small></div>
+<script>/*THREE*/</script>
+<script>/*ORBIT*/</script>
+<script>/*STL*/</script>
+<script>/*GLTF*/</script>
+<script>
+(function(){
+const W=180,D=170,H=330,T=4;          // outer box (mm) and wall thickness
+const HINGE_Y=192,HINGE_Z=-D/2+12;      // press plate hinge
+const FLAP_Y=75;                        // sorting flap pivot
+const BLADE_BASE=156,BLADE_H=20;        // blade bed
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene();
+const dark=matchMedia('(prefers-color-scheme: dark)').matches;
+scene.background=new THREE.Color(dark?0x151a1f:0xeef1f4);
+const camera=new THREE.PerspectiveCamera(35,1,1,5000);
+camera.position.set(520,430,640);
+const controls=new THREE.OrbitControls(camera,canvas);
+controls.target.set(0,165,0);controls.enableDamping=true;controls.update();
+scene.add(new THREE.HemisphereLight(0xffffff,0x8899aa,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.85);sun.position.set(300,600,400);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-300,right:300,top:300,bottom:-300,near:10,far:1500});
+scene.add(sun);
+const fill=new THREE.DirectionalLight(0xffffff,0.3);fill.position.set(-400,200,-300);scene.add(fill);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(420,64),new THREE.MeshStandardMaterial({color:dark?0x20272e:0xdfe4e9,roughness:1}));
+floor.rotation.x=-Math.PI/2;floor.position.y=-62;floor.receiveShadow=true;scene.add(floor);
+
+// ---------- materials ----------
+const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.6,metalness:.05},o));
+const mat={
+  wall:M(0xf4f6f8,{transparent:true,opacity:.35,side:THREE.DoubleSide,depthWrite:false}),
+  acrylic:M(0xbfe6ff,{transparent:true,opacity:.18,roughness:.05,side:THREE.DoubleSide,depthWrite:false}),
+  frame:M(0x3c4650),
+  steel:M(0xc9d1d8,{metalness:.9,roughness:.25}),
+  plate:M(0x2f9e6b),
+  funnel:M(0xf0b429,{side:THREE.DoubleSide}),
+  flap:M(0x2b7bb9),
+  servo:M(0x2d5fd6),
+  gear:M(0xffffff,{roughness:.4}),
+  pcb:M(0x1e1e1e),
+  probe:M(0xd8a640,{metalness:.7,roughness:.3}),
+  lens:M(0x111111,{roughness:.1}),
+  led:M(0xff3b30,{emissive:0x000000}),
+  bag:M(0x2c3a2f,{roughness:.35,transparent:true,opacity:.95}),
+  wet:M(0x8a5a2b),dry:M(0xd9c59a),
+  outlet:M(0x9aa6b2,{side:THREE.DoubleSide})
+};
+const box=(w,h,d,m,x=0,y=0,z=0,parent)=>{const g=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);g.position.set(x,y,z);g.castShadow=g.receiveShadow=true;(parent||root).add(g);return g;};
+const cyl=(rt,rb,h,m,seg=24,open=false)=>{const g=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg,1,open),m);g.castShadow=true;return g;};
+
+const root=new THREE.Group();root.name='BagSplitter';scene.add(root);
+const parts=[];   // {name, obj, anchor, note}
+function part(name,obj,anchor,note){obj.name=name.replace(/[^A-Za-z0-9]+/g,'_');root.add(obj);parts.push({name,obj,anchor,note});return obj;}
+const anchorAt=(parent,x,y,z)=>{const a=new THREE.Object3D();a.position.set(x,y,z);parent.add(a);return a;};
+
+// ---------- 1. housing ----------
+const housing=new THREE.Group();
+const wallMeshes=[];
+const hw=(w,h,d,x,y,z,m=mat.wall)=>{const b=box(w,h,d,m,x,y,z,housing);b.castShadow=false;wallMeshes.push(b);return b;};
+hw(T,H,D,-W/2+T/2,H/2,0); hw(T,H,D,W/2-T/2,H/2,0);              // side walls
+hw(W,H,T,0,H/2,-D/2+T/2);                                        // back wall
+const front=hw(W,H,T,0,H/2,D/2-T/2,mat.acrylic);                 // clear front
+// base with two outlet holes (x in ±[30,70], z in [-20,20])
+hw(W,T,D/2-20,0,T/2,-(20+(D/2-20)/2));hw(W,T,D/2-20,0,T/2,(20+(D/2-20)/2));
+hw(20,T,40,-80,T/2,0);hw(60,T,40,0,T/2,0);hw(20,T,40,80,T/2,0);
+// lid with drop slot x[-60,60] z[-40,75]
+const LY=H-T/2;
+hw(30,T,D,-75,LY,0);hw(30,T,D,75,LY,0);hw(120,T,45,0,LY,-62.5);hw(120,T,10,0,LY,80);
+// inner divider under flap
+const divider=box(T,36,D-2*T,mat.frame,0,T+18,0,housing);
+part('Housing (180 x 170 x 330)',housing,anchorAt(housing,-W/2,H*0.62,D/2),'3 mm acrylic / plywood box, clear front window');
+
+// drop slot mouth
+const mouth=cyl(95,70,18,mat.frame,4,true);mouth.rotation.y=Math.PI/4;mouth.scale.set(1,1,0.85);mouth.position.set(0,H+9,17.5);
+mouth.material=M(0x3c4650,{side:THREE.DoubleSide});
+const mouthG=new THREE.Group();mouthG.add(mouth);
+part('Drop slot (from top of station)',mouthG,anchorAt(mouthG,0,H+22,17.5),'Bag enters here from the RFID-unlocked top');
+
+// ---------- 2. ESP32-CAM ----------
+const cam=new THREE.Group();
+const camBody=new THREE.Group();
+box(4,40,27,mat.pcb,0,0,0,camBody);
+const lens=cyl(4.5,4.5,6,mat.lens,20);lens.rotation.z=Math.PI/2;lens.position.set(5,6,0);camBody.add(lens);
+const led=cyl(2,2,2,mat.led,12);led.rotation.z=Math.PI/2;led.position.set(3,-8,6);camBody.add(led);
+box(10,6,30,mat.frame,-5,22,0,camBody); // bracket
+camBody.rotation.z=-0.75;cam.add(camBody);cam.position.set(-W/2+T+8,H-40,10);
+part('ESP32-CAM (sees closed bag)',cam,anchorAt(cam,0,12,0),'Snapshot -> closed bag? -> start press');
+
+// ---------- 3. press plate + hinge + servo ----------
+const press=new THREE.Group();press.position.set(0,HINGE_Y,HINGE_Z);
+const plate=box(150,6,128,mat.plate,0,0,70,press);
+for(let x=-48;x<=48;x+=24) box(3,5,118,mat.frame,x+12,-5.5,72,press); // ribs sit between blade rows
+box(150,10,10,mat.plate,0,0,6,press);  // hinge knuckle
+const rod=cyl(3,3,W+14,mat.steel,16);rod.rotation.z=Math.PI/2;rod.position.set(7,HINGE_Y,HINGE_Z);
+const pressG=new THREE.Group();pressG.add(press);pressG.add(rod);
+const plateAnchor=anchorAt(press,0,6,95);
+part('Press plate (hinged jaw)',pressG,plateAnchor,'Swings down 88 deg, squeezes bag onto blades');
+
+// gears + SG90 outside right wall
+const gearG=new THREE.Group();
+function gear(r,teeth,th){const g=new THREE.Group();const c=cyl(r,r,th,mat.gear,32);c.rotation.z=Math.PI/2;g.add(c);
+  for(let i=0;i<teeth;i++){const a=i/teeth*Math.PI*2;const t=box(th,3,3.2,mat.gear,0,Math.cos(a)*(r+1.2),Math.sin(a)*(r+1.2),g);t.rotation.x=-a;}
+  const hub=cyl(3.5,3.5,th+1,mat.frame,12);hub.rotation.z=Math.PI/2;g.add(hub);return g;}
+const bigGear=gear(16,24,4);bigGear.position.set(W/2+3,HINGE_Y,HINGE_Z);gearG.add(bigGear);
+const smallGear=gear(8,12,4);smallGear.position.set(W/2+3,HINGE_Y,HINGE_Z+26.5);gearG.add(smallGear);
+const sg=new THREE.Group();
+box(22.5,12.2,22.8,mat.servo,0,0,0,sg);box(2.5,12.2,32.5,mat.servo,-6,0,0,sg);
+const shaft=cyl(2.4,2.4,5,mat.gear,12);shaft.rotation.z=Math.PI/2;shaft.position.set(-13.5,0,-5.5);sg.add(shaft);
+sg.position.set(W/2+19,HINGE_Y,HINGE_Z+32);gearG.add(sg);
+part('SG90 press servo + 2:1 gears',gearG,anchorAt(gearG,W/2+20,HINGE_Y+12,HINGE_Z+30),'Servo turns 176 deg -> plate 88 deg, double torque');
+
+// ---------- 4. blade bed ----------
+const blades=new THREE.Group();
+const ROWS=[-60,-36,-12,12,36,60];
+const sh=new THREE.Shape();const L=150,TEETH=6,tw=L/TEETH;
+sh.moveTo(-L/2,0);for(let i=0;i<TEETH;i++){sh.lineTo(-L/2+i*tw+tw/2,BLADE_H);sh.lineTo(-L/2+(i+1)*tw,0);}sh.lineTo(-L/2,0);
+const bladeGeo=new THREE.ExtrudeGeometry(sh,{depth:1.5,bevelEnabled:false});bladeGeo.translate(0,0,-0.75);bladeGeo.rotateY(Math.PI/2);
+ROWS.forEach(x=>{const b=new THREE.Mesh(bladeGeo,mat.steel);b.position.set(x,BLADE_BASE,0);b.castShadow=true;blades.add(b);
+  box(6,6,D-2*T,mat.frame,x,BLADE_BASE-3,0,blades);});
+box(W-2*T,6,8,mat.frame,0,BLADE_BASE-3,-D/2+T+4,blades);box(W-2*T,6,8,mat.frame,0,BLADE_BASE-3,D/2-T-4,blades);
+part('Blade bed (6 saw rows, enclosed)',blades,anchorAt(blades,36,BLADE_BASE+BLADE_H+4,40),'Steel saw teeth 20 mm tall, 18 mm gaps let waste fall');
+
+// ---------- 5. funnel ----------
+const funnelG=new THREE.Group();
+const fn=cyl(84*Math.SQRT2,35*Math.SQRT2,50,mat.funnel,4,true);fn.rotation.y=Math.PI/4;fn.position.y=125;fn.scale.set(1,1,0.95);
+fn.receiveShadow=true;funnelG.add(fn);
+part('Collection funnel',funnelG,anchorAt(funnelG,60,140,60),'Guides contents onto the moisture sensor');
+
+// ---------- 6. flap + moisture sensor + servo ----------
+const flap=new THREE.Group();flap.position.set(0,FLAP_Y,0);
+box(124,4,110,mat.flap,0,0,0,flap);
+box(124,8,3,mat.flap,0,4,-55,flap);box(124,8,3,mat.flap,0,4,55,flap); // side lips
+const sensor=new THREE.Group();
+box(20,2,14,mat.pcb,0,3,-20,sensor);[-5,5].forEach(x=>box(3.5,1,30,mat.probe,x,2.5,2,sensor));
+flap.add(sensor);
+const axle=cyl(2.5,2.5,D-2*T,mat.steel,12);axle.rotation.x=Math.PI/2;flap.add(axle);
+const sensorAnchor=anchorAt(flap,0,6,0);
+const flapG=new THREE.Group();flapG.add(flap);
+const fs=new THREE.Group();box(12.2,22.8,22.5,mat.servo,0,0,0,fs);box(12.2,32.5,2.5,mat.servo,0,0,6,fs);
+fs.position.set(0,FLAP_Y+5.5,-D/2-12);flapG.add(fs);
+part('Sorting flap (existing SG90)',flapG,anchorAt(flapG,-55,FLAP_Y+6,-40),'Tilts left = WET, right = DRY');
+parts.push({name:'Moisture sensor (on flap)',obj:sensor,anchor:sensorAnchor,note:'Reads the contents: wet or dry'});
+
+// ---------- 7. outlets ----------
+const outG=new THREE.Group();
+[-50,50].forEach(x=>{const o=cyl(28,20,50,mat.outlet,4,true);o.rotation.y=Math.PI/4;o.position.set(x,-25,0);outG.add(o);});
+const wetA=anchorAt(outG,-50,-52,0),dryA=anchorAt(outG,50,-52,0);
+part('Outlet to WET bin',outG,wetA,'Left chute');
+parts.push({name:'Outlet to DRY bin',obj:outG,anchor:dryA,note:'Right chute'});
+
+// ---------- animated items (not exported) ----------
+const fx=new THREE.Group();scene.add(fx);
+const bag=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),mat.bag);bag.scale.set(52,24,42);bag.castShadow=true;fx.add(bag);
+const torn=new THREE.Group();fx.add(torn);
+[-1,1].forEach(s=>{const h=new THREE.Mesh(new THREE.SphereGeometry(1,24,12,0,Math.PI),mat.bag);h.rotation.y=s>0?Math.PI/2:-Math.PI/2;
+  h.scale.set(40,7,26);h.position.x=s*18;h.userData.s=s;torn.add(h);});
+const bits=[];const rnd=(a=>()=>{a=(a*9301+49297)%233280;return a/233280;})(7);
+for(let i=0;i<12;i++){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(5+rnd()*3),mat.wet);
+  m.userData={x0:(rnd()-.5)*70,z0:(rnd()-.5)*60,gap:[-48,-24,0,24,48][i%5],fx:(rnd()-.5)*40,fz:(rnd()-.5)*50,d:rnd()*.4};m.castShadow=true;fx.add(m);bits.push(m);}
+
+// ---------- labels ----------
+const labelsEl=document.getElementById('labels');const list=document.getElementById('parts');
+parts.forEach((p,i)=>{const el=document.createElement('div');el.className='lab';el.innerHTML='<b>'+(i+1)+'</b>'+p.name;labelsEl.appendChild(el);p.el=el;
+  const li=document.createElement('li');li.textContent=p.name+': '+p.note;li.onmouseenter=()=>el.classList.add('hl');li.onmouseleave=()=>el.classList.remove('hl');list.appendChild(li);});
+let showLabels=true;
+const v=new THREE.Vector3();
+function placeLabels(){const r=canvas.getBoundingClientRect();parts.forEach(p=>{if(!showLabels){p.el.style.display='none';return;}
+  p.anchor.getWorldPosition(v);v.project(camera);const vis=v.z<1;p.el.style.display=vis?'block':'none';
+  p.el.style.left=((v.x+1)/2*r.width)+'px';p.el.style.top=((1-v.y)/2*r.height-14)+'px';});}
+
+// ---------- timeline ----------
+const OPEN=-88*Math.PI/180;let wet=true;
+const clamp=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));const seg=(t,a,b)=>clamp((t-a)/(b-a));const ease=x=>x<.5?2*x*x:1-Math.pow(-2*x+2,2)/2;
+const statusEl=document.getElementById('status');
+const STEPS=[[0,'1. Bag drops in through the slot','Sealed bag lands on the blade bed'],
+ [1.1,'2. ESP32-CAM sees a closed bag','Snapshot says: bag is sealed, start the splitter'],
+ [1.6,'3. Press plate swings down','SG90 + 2:1 gears push the bag onto the saw blades'],
+ [3.0,'4. Blades split the bag','Bag tears open along the saw rows'],
+ [3.7,'5. Plate lifts, waste falls through','Contents drop between the blade rows into the funnel'],
+ [5.5,'6. Moisture sensor reads it','WET_LABEL'],
+ [6.4,'7. Flap tips to the correct bin','FLAP_LABEL'],
+ [8.6,'8. Ready for the next bag','Torn plastic is pulled off the blades during emptying']];
+function setT(t){
+  // bag drop
+  const drop=ease(seg(t,0,1));const bagY=420+(BLADE_BASE+BLADE_H+22-420)*drop;
+  // press angle
+  const down=ease(seg(t,1.6,3.0)),up=ease(seg(t,3.7,4.8));const ang=OPEN*(1-down)+OPEN*up;
+  press.rotation.x=ang;bigGear.rotation.x=ang;smallGear.rotation.x=-2*ang;
+  // plate underside height above the bag centre (z~10)
+  const plateY=HINGE_Y+Math.sin(-ang)*(10-HINGE_Z)-8;
+  const top=BLADE_BASE+BLADE_H;const hB=Math.min(48,Math.max(8,plateY-top));
+  const split=t>=3.25;
+  bag.visible=t<3.25&&t>0.001;torn.visible=split&&t<9.6;
+  const restY=top+hB/2;bag.position.set(0,drop<1?bagY:restY,10);bag.scale.set(52+(48-hB)*0.35,hB/2,42+(48-hB)*0.2);
+  torn.position.set(0,top+3,10);torn.children.forEach(h=>{h.position.x=h.userData.s*(18+10*seg(t,3.25,4.5));});
+  torn.children.forEach(h=>{h.material.opacity=.95*(1-seg(t,8.8,9.6));});
+  // camera LED
+  const on=t>1.1&&t<1.6;mat.led.emissive.setHex(on?0xff2a1a:0);
+  // flap
+  const dir=wet?1:-1;const tilt=dir*0.52*(ease(seg(t,6.4,7.0))-ease(seg(t,7.8,8.5)));flap.rotation.z=tilt;
+  // bits
+  bits.forEach(b=>{const u=b.userData;b.material=wet?mat.wet:mat.dry;let x,y,z,s=1;
+    const f1=seg(t,3.8+u.d,4.5+u.d),f2=seg(t,4.5+u.d,5.4+u.d);
+    if(t<3.8+u.d){x=u.x0*.6;y=top+6;z=10+u.z0*.4;s=t<3.25?0:1;}
+    else if(f2<=0){x=u.x0*.6+(u.gap-u.x0*.6)*f1;y=top+6-(top+6-130)*f1*f1;z=10+u.z0*.4;}
+    else{const fx0=u.fx*.8,fz0=u.fz*.6;x=u.gap+(fx0-u.gap)*f2;y=130-(130-(FLAP_Y+7))*f2;z=(10+u.z0*.4)+(fz0-(10+u.z0*.4))*f2;}
+    if(t>6.4){const p=new THREE.Vector3(u.fx*.8,7,u.fz*.6);p.applyAxisAngle(new THREE.Vector3(0,0,1),tilt);x=p.x;y=FLAP_Y+p.y;z=p.z;
+      const sl=seg(t,6.9,7.9);if(sl>0){x=x+(-dir*65-x)*sl;y=y-(y+10)*sl*sl;} if(t>7.9){s=0;}}
+    b.position.set(x,y,z);b.scale.setScalar(s);});
+  // status
+  let cur=STEPS[0];STEPS.forEach(s=>{if(t>=s[0])cur=s;});
+  let sub=cur[2].replace('WET_LABEL',wet?'Reading is WET (moisture dropped)':'Reading is DRY (no moisture)').replace('FLAP_LABEL',wet?'Flap tilts LEFT into the WET bin':'Flap tilts RIGHT into the DRY bin');
+  statusEl.innerHTML=cur[1]+'<small>'+sub+'</small>';
+}
+// ---------- UI ----------
+let t=0,playing=true,speed=1;const slider=document.getElementById('t');
+document.getElementById('play').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause':'Play';e.target.classList.toggle('on',playing);};
+document.getElementById('speed').onclick=e=>{speed=speed===1?0.5:speed===0.5?2:1;e.target.textContent='Speed '+speed+'x';};
+document.getElementById('waste').onclick=e=>{wet=!wet;e.target.textContent='Waste: '+(wet?'WET':'DRY');};
+slider.oninput=()=>{t=+slider.value;};
+document.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-w]').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  const m=b.dataset.w;wallMeshes.forEach(w=>{w.visible=m!=='off';});mat.wall.opacity=m==='solid'?1:.35;mat.wall.transparent=m!=='solid';mat.wall.depthWrite=m==='solid';mat.wall.needsUpdate=true;});
+document.getElementById('lbl').onclick=e=>{showLabels=!showLabels;e.target.classList.toggle('on',showLabels);};
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
+addEventListener('resize',resize);resize();
+let last=performance.now();
+function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;if(playing){t=(t+dt*speed)%10;slider.value=t;}
+  setT(t);controls.update();renderer.render(scene,camera);placeLabels();requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+
+// ---------- hooks for export / screenshots ----------
+window.BS={
+  pose(time,opts={}){playing=false;t=time;slider.value=t;if(opts.wet!==undefined)wet=opts.wet;if(opts.cam){camera.position.set(...opts.cam);}
+    if(opts.target)controls.target.set(...opts.target);controls.update();setT(t);renderer.render(scene,camera);placeLabels();},
+  shot(on){document.body.classList.toggle('shot',on);},
+  exportAll(){return new Promise(res=>{setT(0);fx.visible=false;root.updateMatrixWorld(true);
+    const out={};const stl=new THREE.STLExporter();
+    const b64=buf=>{let s='';const u=new Uint8Array(buf.buffer||buf);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s);};
+    out['bag_splitter_full.stl']=b64(stl.parse(root,{binary:true}));
+    const sep={'press_plate.stl':press,'blade_bed.stl':blades,'funnel.stl':funnelG,'sorting_flap.stl':flap};
+    const gg=new THREE.Group();[bigGear,smallGear].forEach(x=>gg.add(x.clone()));gg.updateMatrixWorld(true);sep['gears.stl']=gg;
+    for(const k in sep)out[k]=b64(stl.parse(sep[k],{binary:true}));
+    new THREE.GLTFExporter().parse(root,glb=>{out['bag_splitter.glb']=b64(new Uint8Array(glb));fx.visible=true;res(out);},e=>res({error:String(e)}),{binary:true});});}
+};
+})();
+</script>
+</body>
+</html>
